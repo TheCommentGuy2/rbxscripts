@@ -1,5 +1,4 @@
 -- ACCELERATION X
--- Advanced Speed Control System with Themes
 
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
@@ -54,6 +53,7 @@ local settings = {
 	increaseKey = Enum.KeyCode.Equals,
 	decreaseKey = Enum.KeyCode.Minus,
 	resetKey = Enum.KeyCode.R,
+	toggleKey = Enum.KeyCode.LeftControl,
 	incrementRate = 20,
 	defaultSpeed = 16,
 	currentTheme = "Purple",
@@ -84,7 +84,7 @@ screenGui.ResetOnSpawn = false
 screenGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
 screenGui.Parent = player:WaitForChild("PlayerGui")
 
--- Main Frame (increased height to fit all content)
+-- Main Frame
 local mainFrame = Instance.new("Frame")
 mainFrame.Name = "MainFrame"
 mainFrame.BackgroundColor3 = settings.theme.background
@@ -323,7 +323,7 @@ settingsPanel.Name = "SettingsPanel"
 settingsPanel.BackgroundColor3 = settings.theme.surface
 settingsPanel.BorderSizePixel = 0
 settingsPanel.Position = UDim2.new(0, 20, 0, 180)
-settingsPanel.Size = UDim2.new(1, -40, 0, 230)
+settingsPanel.Size = UDim2.new(1, -40, 0, 260)
 settingsPanel.Parent = contentFrame
 
 local settingsPanelCorner = Instance.new("UICorner")
@@ -436,10 +436,37 @@ local resetKeyCorner = Instance.new("UICorner")
 resetKeyCorner.CornerRadius = UDim.new(0, 5)
 resetKeyCorner.Parent = resetKeyButton
 
+-- Toggle GUI Key
+local toggleKeyLabel = Instance.new("TextLabel")
+toggleKeyLabel.BackgroundTransparency = 1
+toggleKeyLabel.Position = UDim2.new(0, 0, 0, 90)
+toggleKeyLabel.Size = UDim2.new(0.4, -5, 0, 25)
+toggleKeyLabel.Font = Enum.Font.Gotham
+toggleKeyLabel.Text = "Toggle GUI Key"
+toggleKeyLabel.TextColor3 = settings.theme.textDim
+toggleKeyLabel.TextSize = 10
+toggleKeyLabel.TextXAlignment = Enum.TextXAlignment.Left
+toggleKeyLabel.Parent = settingsGrid
+
+local toggleKeyButton = Instance.new("TextButton")
+toggleKeyButton.BackgroundColor3 = settings.theme.background
+toggleKeyButton.BorderSizePixel = 0
+toggleKeyButton.Position = UDim2.new(0.4, 0, 0, 90)
+toggleKeyButton.Size = UDim2.new(0.6, 0, 0, 25)
+toggleKeyButton.Font = Enum.Font.GothamBold
+toggleKeyButton.Text = settings.toggleKey.Name
+toggleKeyButton.TextColor3 = settings.theme.text
+toggleKeyButton.TextSize = 10
+toggleKeyButton.Parent = settingsGrid
+
+local toggleKeyCorner = Instance.new("UICorner")
+toggleKeyCorner.CornerRadius = UDim.new(0, 5)
+toggleKeyCorner.Parent = toggleKeyButton
+
 -- Speed Rate
 local rateLabel = Instance.new("TextLabel")
 rateLabel.BackgroundTransparency = 1
-rateLabel.Position = UDim2.new(0, 0, 0, 90)
+rateLabel.Position = UDim2.new(0, 0, 0, 120)
 rateLabel.Size = UDim2.new(0.4, -5, 0, 25)
 rateLabel.Font = Enum.Font.Gotham
 rateLabel.Text = "Speed Rate (/sec)"
@@ -451,7 +478,7 @@ rateLabel.Parent = settingsGrid
 local rateInput = Instance.new("TextBox")
 rateInput.BackgroundColor3 = settings.theme.background
 rateInput.BorderSizePixel = 0
-rateInput.Position = UDim2.new(0.4, 0, 0, 90)
+rateInput.Position = UDim2.new(0.4, 0, 0, 120)
 rateInput.Size = UDim2.new(0.6, 0, 0, 25)
 rateInput.Font = Enum.Font.GothamBold
 rateInput.Text = tostring(settings.incrementRate)
@@ -467,7 +494,7 @@ rateInputCorner.Parent = rateInput
 -- Default Speed
 local defaultSpeedLabel = Instance.new("TextLabel")
 defaultSpeedLabel.BackgroundTransparency = 1
-defaultSpeedLabel.Position = UDim2.new(0, 0, 0, 120)
+defaultSpeedLabel.Position = UDim2.new(0, 0, 0, 150)
 defaultSpeedLabel.Size = UDim2.new(0.4, -5, 0, 25)
 defaultSpeedLabel.Font = Enum.Font.Gotham
 defaultSpeedLabel.Text = "Default Speed"
@@ -479,7 +506,7 @@ defaultSpeedLabel.Parent = settingsGrid
 local defaultSpeedInput = Instance.new("TextBox")
 defaultSpeedInput.BackgroundColor3 = settings.theme.background
 defaultSpeedInput.BorderSizePixel = 0
-defaultSpeedInput.Position = UDim2.new(0.4, 0, 0, 120)
+defaultSpeedInput.Position = UDim2.new(0.4, 0, 0, 150)
 defaultSpeedInput.Size = UDim2.new(0.6, 0, 0, 25)
 defaultSpeedInput.Font = Enum.Font.GothamBold
 defaultSpeedInput.Text = tostring(settings.defaultSpeed)
@@ -495,7 +522,7 @@ defaultSpeedCorner.Parent = defaultSpeedInput
 -- Theme Color
 local themeLabel = Instance.new("TextLabel")
 themeLabel.BackgroundTransparency = 1
-themeLabel.Position = UDim2.new(0, 0, 0, 150)
+themeLabel.Position = UDim2.new(0, 0, 0, 180)
 themeLabel.Size = UDim2.new(0.4, -5, 0, 25)
 themeLabel.Font = Enum.Font.Gotham
 themeLabel.Text = "Theme Color"
@@ -508,7 +535,7 @@ local themeButton = Instance.new("TextButton")
 themeButton.Name = "ThemeButton"
 themeButton.BackgroundColor3 = settings.theme.background
 themeButton.BorderSizePixel = 0
-themeButton.Position = UDim2.new(0.4, 0, 0, 150)
+themeButton.Position = UDim2.new(0.4, 0, 0, 180)
 themeButton.Size = UDim2.new(0.6, 0, 0, 25)
 themeButton.Font = Enum.Font.GothamBold
 themeButton.Text = settings.currentTheme
@@ -519,19 +546,6 @@ themeButton.Parent = settingsGrid
 local themeButtonCorner = Instance.new("UICorner")
 themeButtonCorner.CornerRadius = UDim.new(0, 5)
 themeButtonCorner.Parent = themeButton
-
--- Left Control Hint
-local controlHint = Instance.new("TextLabel")
-controlHint.Name = "ControlHint"
-controlHint.BackgroundTransparency = 1
-controlHint.Position = UDim2.new(0, 20, 0, 415)
-controlHint.Size = UDim2.new(1, -40, 0, 20)
-controlHint.Font = Enum.Font.Gotham
-controlHint.Text = "Press [Left Control] to minimize GUI"
-controlHint.TextColor3 = settings.theme.textDim
-controlHint.TextSize = 9
-controlHint.TextXAlignment = Enum.TextXAlignment.Center
-controlHint.Parent = contentFrame
 
 -- Minimized Display
 local miniDisplay = Instance.new("Frame")
@@ -679,6 +693,69 @@ local function cycleTheme()
 	updateTheme(themes[nextIndex])
 end
 
+-- Rainbow Cycle Mode
+local rainbowCycleEnabled = false
+local rainbowHue = 0
+
+local function updateRainbowColor()
+	if not rainbowCycleEnabled then return end
+	
+	-- HSV to RGB conversion for smooth rainbow
+	local function HSVToRGB(h, s, v)
+		local r, g, b
+		local i = math.floor(h * 6)
+		local f = h * 6 - i
+		local p = v * (1 - s)
+		local q = v * (1 - f * s)
+		local t = v * (1 - (1 - f) * s)
+		i = i % 6
+		if i == 0 then r, g, b = v, t, p
+		elseif i == 1 then r, g, b = q, v, p
+		elseif i == 2 then r, g, b = p, v, t
+		elseif i == 3 then r, g, b = p, q, v
+		elseif i == 4 then r, g, b = t, p, v
+		elseif i == 5 then r, g, b = v, p, q
+		end
+		return Color3.new(r, g, b)
+	end
+	
+	local rainbowColor = HSVToRGB(rainbowHue, 0.8, 0.9)
+	
+	-- Update all themed elements with rainbow color
+	mainStroke.Color = rainbowColor
+	headerAccent.BackgroundColor3 = rainbowColor
+	logo.TextColor3 = rainbowColor
+	speedContainerStroke.Color = rainbowColor
+	if currentSpeed <= 20 then
+		speedDisplay.TextColor3 = rainbowColor
+	end
+	settingsPanelStroke.Color = rainbowColor
+	settingsTitle.TextColor3 = rainbowColor
+	themeButton.TextColor3 = rainbowColor
+	miniStroke.Color = rainbowColor
+	miniAccent.BackgroundColor3 = rainbowColor
+	if currentSpeed <= 20 then
+		miniSpeedValue.TextColor3 = rainbowColor
+	end
+	showButton.TextColor3 = rainbowColor
+	
+	-- Increment hue
+	rainbowHue = rainbowHue + 0.002
+	if rainbowHue >= 1 then
+		rainbowHue = 0
+	end
+end
+
+local function toggleRainbowMode()
+	rainbowCycleEnabled = not rainbowCycleEnabled
+	if rainbowCycleEnabled then
+		themeButton.Text = "Dynamic Colour"
+	else
+		-- Restore to current theme
+		updateTheme(settings.currentTheme)
+	end
+end
+
 local function updateSpeedDisplay()
 	local displaySpeed = string.format("%.0f", currentSpeed)
 	speedDisplay.Text = displaySpeed
@@ -760,6 +837,7 @@ addHoverEffect(hideButton, settings.theme.surface, settings.theme.background)
 addHoverEffect(increaseKeyButton, settings.theme.background, settings.theme.surface)
 addHoverEffect(decreaseKeyButton, settings.theme.background, settings.theme.surface)
 addHoverEffect(resetKeyButton, settings.theme.background, settings.theme.surface)
+addHoverEffect(toggleKeyButton, settings.theme.background, settings.theme.surface)
 addHoverEffect(themeButton, settings.theme.background, settings.theme.surface)
 addHoverEffect(showButton, settings.theme.background, settings.theme.surface)
 
@@ -805,8 +883,34 @@ resetKeyButton.MouseButton1Click:Connect(function()
 	resetKeyButton.TextColor3 = settings.theme.primary
 end)
 
+toggleKeyButton.MouseButton1Click:Connect(function()
+	settingKeybind = "toggle"
+	toggleKeyButton.Text = "Press any key..."
+	toggleKeyButton.TextColor3 = settings.theme.primary
+end)
+
+local themeClickCount = 0
+local themeClickTimer = nil
 themeButton.MouseButton1Click:Connect(function()
-	cycleTheme()
+	themeClickCount = themeClickCount + 1
+	
+	if themeClickTimer then
+		themeClickTimer:Cancel()
+	end
+	
+	themeClickTimer = task.delay(0.3, function()
+		if themeClickCount == 1 then
+			-- Single click - cycle theme
+			if rainbowCycleEnabled then
+				toggleRainbowMode()
+			end
+			cycleTheme()
+		elseif themeClickCount >= 2 then
+			-- Double click - toggle rainbow
+			toggleRainbowMode()
+		end
+		themeClickCount = 0
+	end)
 end)
 
 rateInput.FocusLost:Connect(function()
@@ -830,10 +934,6 @@ end)
 
 -- Keybind Conflict Check Function
 local function isKeybindInUse(keyCode, excludeAction)
-	if keyCode == Enum.KeyCode.LeftControl then
-		return true, "Reserved for GUI toggle"
-	end
-	
 	if excludeAction ~= "increase" and settings.increaseKey == keyCode then
 		return true, "Increase Speed"
 	end
@@ -846,6 +946,10 @@ local function isKeybindInUse(keyCode, excludeAction)
 		return true, "Reset Speed"
 	end
 	
+	if excludeAction ~= "toggle" and settings.toggleKey == keyCode then
+		return true, "Toggle GUI"
+	end
+	
 	return false, nil
 end
 
@@ -853,8 +957,8 @@ end
 UserInputService.InputBegan:Connect(function(input, gameProcessed)
 	if gameProcessed then return end
 	
-	-- Left Control to toggle hide/show GUI
-	if input.KeyCode == Enum.KeyCode.LeftControl then
+	-- Toggle key to toggle hide/show GUI
+	if input.KeyCode == settings.toggleKey then
 		toggleHide()
 		return
 	end
@@ -875,6 +979,9 @@ UserInputService.InputBegan:Connect(function(input, gameProcessed)
 				elseif settingKeybind == "reset" then
 					resetKeyButton.Text = "KEYBIND IN USE!"
 					resetKeyButton.TextColor3 = settings.theme.danger
+				elseif settingKeybind == "toggle" then
+					toggleKeyButton.Text = "KEYBIND IN USE!"
+					toggleKeyButton.TextColor3 = settings.theme.danger
 				end
 				
 				-- Reset to original after 1 second
@@ -888,6 +995,9 @@ UserInputService.InputBegan:Connect(function(input, gameProcessed)
 				elseif settingKeybind == "reset" then
 					resetKeyButton.Text = settings.resetKey.Name
 					resetKeyButton.TextColor3 = settings.theme.text
+				elseif settingKeybind == "toggle" then
+					toggleKeyButton.Text = settings.toggleKey.Name
+					toggleKeyButton.TextColor3 = settings.theme.text
 				end
 				settingKeybind = nil
 				return
@@ -906,6 +1016,10 @@ UserInputService.InputBegan:Connect(function(input, gameProcessed)
 				settings.resetKey = input.KeyCode
 				resetKeyButton.Text = input.KeyCode.Name
 				resetKeyButton.TextColor3 = settings.theme.text
+			elseif settingKeybind == "toggle" then
+				settings.toggleKey = input.KeyCode
+				toggleKeyButton.Text = input.KeyCode.Name
+				toggleKeyButton.TextColor3 = settings.theme.text
 			end
 			updateHotkeyInfo()
 		else
@@ -918,6 +1032,9 @@ UserInputService.InputBegan:Connect(function(input, gameProcessed)
 			elseif settingKeybind == "reset" then
 				resetKeyButton.Text = settings.resetKey.Name
 				resetKeyButton.TextColor3 = settings.theme.text
+			elseif settingKeybind == "toggle" then
+				toggleKeyButton.Text = settings.toggleKey.Name
+				toggleKeyButton.TextColor3 = settings.theme.text
 			end
 		end
 		settingKeybind = nil
@@ -954,6 +1071,9 @@ RunService.Heartbeat:Connect(function(deltaTime)
 		currentSpeed = math.max(0, currentSpeed - (settings.incrementRate * deltaTime))
 		updateSpeedDisplay()
 	end
+	
+	-- Update rainbow if enabled
+	updateRainbowColor()
 end)
 
 -- Character Respawn
@@ -1011,6 +1131,7 @@ print("╔═══════════════════════�
 print("║   ACCELERATION X - INITIALIZED   ║")
 print("╚══════════════════════════════════╝")
 print("Hotkeys: [" .. settings.increaseKey.Name .. "] Faster | [" .. settings.decreaseKey.Name .. "] Slower | [" .. settings.resetKey.Name .. "] Reset")
-print("Press [Left Control] to hide/show GUI")
+print("Press [" .. settings.toggleKey.Name .. "] to hide/show GUI")
 print("Click Theme Color to cycle: Purple → Cyan → Red → Green → Orange → Pink → Blue")
+print("Double-click Theme Color for Dynamic Color Changing Mode")
 print("Continuous LoopWS Active")
