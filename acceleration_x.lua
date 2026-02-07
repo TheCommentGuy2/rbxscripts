@@ -1,5 +1,3 @@
--- ACCELERATION X
-
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
 local UserInputService = game:GetService("UserInputService")
@@ -84,7 +82,7 @@ screenGui.ResetOnSpawn = false
 screenGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
 screenGui.Parent = player:WaitForChild("PlayerGui")
 
--- Main Frame
+-- Main Frame (increased height to fit all content)
 local mainFrame = Instance.new("Frame")
 mainFrame.Name = "MainFrame"
 mainFrame.BackgroundColor3 = settings.theme.background
@@ -693,69 +691,6 @@ local function cycleTheme()
 	updateTheme(themes[nextIndex])
 end
 
--- Rainbow Cycle Mode
-local rainbowCycleEnabled = false
-local rainbowHue = 0
-
-local function updateRainbowColor()
-	if not rainbowCycleEnabled then return end
-	
-	-- HSV to RGB conversion for smooth rainbow
-	local function HSVToRGB(h, s, v)
-		local r, g, b
-		local i = math.floor(h * 6)
-		local f = h * 6 - i
-		local p = v * (1 - s)
-		local q = v * (1 - f * s)
-		local t = v * (1 - (1 - f) * s)
-		i = i % 6
-		if i == 0 then r, g, b = v, t, p
-		elseif i == 1 then r, g, b = q, v, p
-		elseif i == 2 then r, g, b = p, v, t
-		elseif i == 3 then r, g, b = p, q, v
-		elseif i == 4 then r, g, b = t, p, v
-		elseif i == 5 then r, g, b = v, p, q
-		end
-		return Color3.new(r, g, b)
-	end
-	
-	local rainbowColor = HSVToRGB(rainbowHue, 0.8, 0.9)
-	
-	-- Update all themed elements with rainbow color
-	mainStroke.Color = rainbowColor
-	headerAccent.BackgroundColor3 = rainbowColor
-	logo.TextColor3 = rainbowColor
-	speedContainerStroke.Color = rainbowColor
-	if currentSpeed <= 20 then
-		speedDisplay.TextColor3 = rainbowColor
-	end
-	settingsPanelStroke.Color = rainbowColor
-	settingsTitle.TextColor3 = rainbowColor
-	themeButton.TextColor3 = rainbowColor
-	miniStroke.Color = rainbowColor
-	miniAccent.BackgroundColor3 = rainbowColor
-	if currentSpeed <= 20 then
-		miniSpeedValue.TextColor3 = rainbowColor
-	end
-	showButton.TextColor3 = rainbowColor
-	
-	-- Increment hue
-	rainbowHue = rainbowHue + 0.002
-	if rainbowHue >= 1 then
-		rainbowHue = 0
-	end
-end
-
-local function toggleRainbowMode()
-	rainbowCycleEnabled = not rainbowCycleEnabled
-	if rainbowCycleEnabled then
-		themeButton.Text = "Dynamic Colour"
-	else
-		-- Restore to current theme
-		updateTheme(settings.currentTheme)
-	end
-end
-
 local function updateSpeedDisplay()
 	local displaySpeed = string.format("%.0f", currentSpeed)
 	speedDisplay.Text = displaySpeed
@@ -889,28 +824,8 @@ toggleKeyButton.MouseButton1Click:Connect(function()
 	toggleKeyButton.TextColor3 = settings.theme.primary
 end)
 
-local themeClickCount = 0
-local themeClickTimer = nil
 themeButton.MouseButton1Click:Connect(function()
-	themeClickCount = themeClickCount + 1
-	
-	if themeClickTimer then
-		themeClickTimer:Cancel()
-	end
-	
-	themeClickTimer = task.delay(0.3, function()
-		if themeClickCount == 1 then
-			-- Single click - cycle theme
-			if rainbowCycleEnabled then
-				toggleRainbowMode()
-			end
-			cycleTheme()
-		elseif themeClickCount >= 2 then
-			-- Double click - toggle rainbow
-			toggleRainbowMode()
-		end
-		themeClickCount = 0
-	end)
+	cycleTheme()
 end)
 
 rateInput.FocusLost:Connect(function()
@@ -1071,9 +986,6 @@ RunService.Heartbeat:Connect(function(deltaTime)
 		currentSpeed = math.max(0, currentSpeed - (settings.incrementRate * deltaTime))
 		updateSpeedDisplay()
 	end
-	
-	-- Update rainbow if enabled
-	updateRainbowColor()
 end)
 
 -- Character Respawn
@@ -1132,6 +1044,3 @@ print("║   ACCELERATION X - INITIALIZED   ║")
 print("╚══════════════════════════════════╝")
 print("Hotkeys: [" .. settings.increaseKey.Name .. "] Faster | [" .. settings.decreaseKey.Name .. "] Slower | [" .. settings.resetKey.Name .. "] Reset")
 print("Press [" .. settings.toggleKey.Name .. "] to hide/show GUI")
-print("Click Theme Color to cycle: Purple → Cyan → Red → Green → Orange → Pink → Blue")
-print("Double-click Theme Color for Dynamic Color Changing Mode")
-print("Continuous LoopWS Active")
