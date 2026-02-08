@@ -973,7 +973,26 @@ UserInputService.InputEnded:Connect(function(input)
 	end
 end)
 
--- Continuous Speed Loop (LoopWS)
+-- Speed enforcement connection (mimics loopws logic)
+local speedEnforcementConnection = nil
+
+local function enforceCurrentSpeed()
+	if humanoid and humanoid.Parent then
+		humanoid.WalkSpeed = currentSpeed
+	end
+end
+
+local function setupSpeedEnforcement()
+	if speedEnforcementConnection then
+		speedEnforcementConnection:Disconnect()
+	end
+	
+	if humanoid and humanoid.Parent then
+		speedEnforcementConnection = humanoid:GetPropertyChangedSignal("WalkSpeed"):Connect(enforceCurrentSpeed)
+	end
+end
+
+-- Continuous Speed Loop
 RunService.Heartbeat:Connect(function(deltaTime)
 	if humanoid and humanoid.Parent then
 		humanoid.WalkSpeed = currentSpeed
@@ -988,11 +1007,13 @@ RunService.Heartbeat:Connect(function(deltaTime)
 	end
 end)
 
--- Character Respawn
+setupSpeedEnforcement()
+
 player.CharacterAdded:Connect(function(newCharacter)
 	character = newCharacter
 	humanoid = character:WaitForChild("Humanoid")
 	humanoid.WalkSpeed = currentSpeed
+	setupSpeedEnforcement()
 end)
 
 -- Draggable
