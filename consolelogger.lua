@@ -2,6 +2,7 @@ local LogService = game:GetService("LogService")
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
 local TextService = game:GetService("TextService")
+local ContextActionService = game:GetService("ContextActionService")
 local UserInputService = game:GetService("UserInputService")
 
 local DEFAULT_HOTKEY = Enum.KeyCode.RightShift
@@ -216,11 +217,13 @@ local function setTop(v)
 	dirty = true
 end
 
-track(UserInputService.InputChanged:Connect(function(input)
-	if input.UserInputType == Enum.UserInputType.MouseWheel and hovering and not minimized then
+ContextActionService:BindActionAtPriority("ConsoleLoggerWheel", function(_, _, input)
+	if hovering and not minimized then
 		setTop(top - input.Position.Z * WHEEL_ROWS)
+		return Enum.ContextActionResult.Sink
 	end
-end))
+	return Enum.ContextActionResult.Pass
+end, false, 3000, Enum.UserInputType.MouseWheel)
 frame.MouseEnter:Connect(function() hovering = true end)
 frame.MouseLeave:Connect(function() hovering = false end)
 
@@ -353,6 +356,7 @@ endBtn.MouseButton1Click:Connect(function()
 end)
 
 closeBtn.MouseButton1Click:Connect(function()
+	ContextActionService:UnbindAction("ConsoleLoggerWheel")
 	for _, c in ipairs(connections) do c:Disconnect() end
 	gui:Destroy()
 end)
