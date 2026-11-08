@@ -13,6 +13,10 @@ if not RF then warn("[ST] remote missing") return end
 
 local toggleKey = getgenv().STKey or Enum.KeyCode.RightShift
 
+local function isMisc(name)
+    return string.find(name, "Island", 1, true) ~= nil or string.sub(name, 1, 6) == "Giver_"
+end
+
 local function heroOf(ty)
     local ex = ty:FindFirstChild("Extras")
     if ex then
@@ -201,21 +205,22 @@ tabs.Parent = main
 
 local function mkTab(text, x)
     local b = Instance.new("TextButton")
-    b.Size = UDim2.new(0.5, -3, 1, 0)
+    b.Size = UDim2.new(0.3333, -4, 1, 0)
     b.Position = UDim2.new(0, x, 0, 0)
     b.BackgroundColor3 = Color3.fromRGB(36, 36, 43)
     b.BorderSizePixel = 0
     b.Text = text
     b.TextColor3 = Color3.fromRGB(200, 200, 200)
     b.Font = Enum.Font.GothamBold
-    b.TextSize = 12
+    b.TextSize = 11
     b.Parent = tabs
     Instance.new("UICorner", b).CornerRadius = UDim.new(0, 6)
     return b
 end
 
 local toolsTab = mkTab("TOOLS", 0)
-local morphTab = mkTab("MORPHS", 0.5 * 300 + 3)
+local morphTab = mkTab("MORPHS", 0.3333 * 300 + 4)
+local miscTab = mkTab("MISC", 0.6666 * 300 + 8)
 
 local function mkScroll()
     local f = Instance.new("ScrollingFrame")
@@ -235,6 +240,7 @@ end
 
 local toolsScroll = mkScroll()
 local morphScroll = mkScroll()
+local miscScroll = mkScroll()
 
 local grabAll = Instance.new("TextButton")
 grabAll.Size = UDim2.new(1, -20, 0, 32)
@@ -248,15 +254,32 @@ grabAll.TextSize = 13
 grabAll.Parent = main
 Instance.new("UICorner", grabAll).CornerRadius = UDim.new(0, 6)
 
+local grabMisc = Instance.new("TextButton")
+grabMisc.Size = UDim2.new(1, -20, 0, 32)
+grabMisc.Position = UDim2.new(0, 10, 1, -42)
+grabMisc.BackgroundColor3 = Color3.fromRGB(120, 80, 0)
+grabMisc.BorderSizePixel = 0
+grabMisc.Text = "GRAB ALL MISC"
+grabMisc.TextColor3 = Color3.new(1, 1, 1)
+grabMisc.Font = Enum.Font.GothamBold
+grabMisc.TextSize = 13
+grabMisc.Visible = false
+grabMisc.Parent = main
+Instance.new("UICorner", grabMisc).CornerRadius = UDim.new(0, 6)
+
 local function showTab(which)
     toolsScroll.Visible = which == "tools"
     morphScroll.Visible = which == "morph"
+    miscScroll.Visible = which == "misc"
     grabAll.Visible = which == "tools"
+    grabMisc.Visible = which == "misc"
     toolsTab.BackgroundColor3 = which == "tools" and Color3.fromRGB(0, 120, 190) or Color3.fromRGB(36, 36, 43)
     morphTab.BackgroundColor3 = which == "morph" and Color3.fromRGB(0, 120, 190) or Color3.fromRGB(36, 36, 43)
+    miscTab.BackgroundColor3 = which == "misc" and Color3.fromRGB(120, 80, 0) or Color3.fromRGB(36, 36, 43)
 end
 toolsTab.MouseButton1Click:Connect(function() showTab("tools") end)
 morphTab.MouseButton1Click:Connect(function() showTab("morph") end)
+miscTab.MouseButton1Click:Connect(function() showTab("misc") end)
 
 local busy = false
 
@@ -266,15 +289,17 @@ local function liveTycoons()
         local id = tonumber(ty.Name)
         local con = ty:FindFirstChild("Constructs")
         if id and con then
-            local slots = {}
+            local heroSlots = {}
             local pw = con:FindFirstChild("PowerGiver")
             if pw then
-                for _, m in ipairs(pw:GetChildren()) do table.insert(slots, m.Name) end
+                for _, m in ipairs(pw:GetChildren()) do
+                    if not isMisc(m.Name) then table.insert(heroSlots, m.Name) end
+                end
             end
             table.insert(out, {
                 id = id,
                 hero = heroOf(ty) or ("Unknown " .. id),
-                slots = slots,
+                slots = heroSlots,
                 outfit = con:FindFirstChild("OutfitGiver") ~= nil,
             })
         end
@@ -283,11 +308,41 @@ local function liveTycoons()
     return out
 end
 
+local function miscSlots()
+    local map = {}
+    local order = {}
+    for _, ty in ipairs(workspace.Tycoons:GetChildren()) do
+        local id = tonumber(ty.Name)
+        local con = ty:FindFirstChild("Constructs")
+        local pw = con and con:FindFirstChild("PowerGiver")
+        if id and pw then
+            for _, m in ipairs(pw:GetChildren()) do
+                if isMisc(m.Name) and not map[m.Name] then
+                    map[m.Name] = { id = id, giver = m.Name }
+                    table.insert(order, m.Name)
+                end
+            end
+        end
+    end
+    table.sort(order)
+    return map, order
+end
+
+local function grabSlot(id, giver, btn, label)
+    local ok, a = pcall(function() return RF:InvokeServer(id, "Power", giver) end)
+    if btn then
+        btn.Text = "  " .. label .. (ok and a and "   ok" or "   --")
+        task.delay(1.2, function()
+            if btn and btn.Parent then btn.Text = "  " .. label end
+        end)
+    end
+    return ok and a ~= nil
+end
+
 local function grabTycoon(entry, btn)
     local got = 0
     for i, slot in ipairs(entry.slots) do
-        local ok, a = pcall(function() return RF:InvokeServer(entry.id, "Power", slot) end)
-        if ok and a ~= nil then got += 1 end
+        if grabSlot(entry.id, slot, nil, slot) then got += 1 end
         if btn then btn.Text = "  " .. entry.hero .. "   " .. got .. "/" .. i end
         task.wait(0.3)
     end
@@ -311,12 +366,12 @@ local function morph(entry, btn)
     if btn then btn.Text = "  " .. entry.hero end
 end
 
-local function heroButton(parent, entry, mode, order)
+local function row(parent, label, order, cb, color)
     local b = Instance.new("TextButton")
     b.Size = UDim2.new(1, -8, 0, 28)
-    b.BackgroundColor3 = Color3.fromRGB(42, 50, 60)
+    b.BackgroundColor3 = color or Color3.fromRGB(42, 50, 60)
     b.BorderSizePixel = 0
-    b.Text = "  " .. entry.hero
+    b.Text = "  " .. label
     b.TextColor3 = Color3.fromRGB(225, 225, 230)
     b.Font = Enum.Font.GothamSemibold
     b.TextSize = 12
@@ -324,37 +379,49 @@ local function heroButton(parent, entry, mode, order)
     b.LayoutOrder = order
     b.Parent = parent
     Instance.new("UICorner", b).CornerRadius = UDim.new(0, 5)
-    b.MouseButton1Click:Connect(function()
-        if busy then return end
-        if mode == "tools" then
-            busy = true
-            task.spawn(function() grabTycoon(entry, b) busy = false end)
-        else
-            task.spawn(morph, entry, b)
-        end
-    end)
+    b.MouseButton1Click:Connect(cb)
+    return b
 end
 
 local function build()
     local keepT = toolsScroll.CanvasPosition
     local keepM = morphScroll.CanvasPosition
-    for _, c in ipairs(toolsScroll:GetChildren()) do
-        if c:IsA("TextButton") then c:Destroy() end
-    end
-    for _, c in ipairs(morphScroll:GetChildren()) do
-        if c:IsA("TextButton") then c:Destroy() end
+    local keepX = miscScroll.CanvasPosition
+    for _, f in ipairs({toolsScroll, morphScroll, miscScroll}) do
+        for _, c in ipairs(f:GetChildren()) do
+            if c:IsA("TextButton") then c:Destroy() end
+        end
     end
 
     local list = liveTycoons()
     for i, e in ipairs(list) do
-        heroButton(toolsScroll, e, "tools", i)
-        if e.outfit then heroButton(morphScroll, e, "morph", i) end
+        row(toolsScroll, e.hero, i, function()
+            if busy then return end
+            busy = true
+            local b = toolsScroll:FindFirstChild("x")
+            task.spawn(function() grabTycoon(e, nil) busy = false end)
+        end)
+        if e.outfit then
+            row(morphScroll, e.hero, i, function()
+                task.spawn(morph, e, nil)
+            end)
+        end
+    end
+
+    local map, order = miscSlots()
+    for i, name in ipairs(order) do
+        row(miscScroll, name, i, function()
+            local src = map[name]
+            if src then grabSlot(src.id, src.giver, nil, name) end
+        end, Color3.fromRGB(52, 45, 34))
     end
 
     toolsScroll.CanvasSize = UDim2.new(0, 0, 0, #list * 32 + 8)
     morphScroll.CanvasSize = UDim2.new(0, 0, 0, #list * 32 + 8)
+    miscScroll.CanvasSize = UDim2.new(0, 0, 0, #order * 32 + 8)
     toolsScroll.CanvasPosition = keepT
     morphScroll.CanvasPosition = keepM
+    miscScroll.CanvasPosition = keepX
 end
 
 grabAll.MouseButton1Click:Connect(function()
@@ -367,14 +434,32 @@ grabAll.MouseButton1Click:Connect(function()
         for _, e in ipairs(list) do total += #e.slots end
         for _, e in ipairs(list) do
             for _, slot in ipairs(e.slots) do
-                local ok, a = pcall(function() return RF:InvokeServer(e.id, "Power", slot) end)
-                if ok and a ~= nil then got += 1 end
+                if grabSlot(e.id, slot, nil, slot) then got += 1 end
                 grabAll.Text = got .. " / " .. total
                 task.wait(0.3)
             end
         end
         grabAll.Text = "GRAB ALL"
         grabAll.BackgroundColor3 = Color3.fromRGB(0, 120, 190)
+        busy = false
+    end)
+end)
+
+grabMisc.MouseButton1Click:Connect(function()
+    if busy then return end
+    busy = true
+    grabMisc.BackgroundColor3 = Color3.fromRGB(70, 60, 40)
+    task.spawn(function()
+        local map, order = miscSlots()
+        local got = 0
+        for i, name in ipairs(order) do
+            local src = map[name]
+            if src and grabSlot(src.id, src.giver, nil, name) then got += 1 end
+            grabMisc.Text = "MISC " .. got .. " / " .. i
+            task.wait(0.3)
+        end
+        grabMisc.Text = "GRAB ALL MISC"
+        grabMisc.BackgroundColor3 = Color3.fromRGB(120, 80, 0)
         busy = false
     end)
 end)
