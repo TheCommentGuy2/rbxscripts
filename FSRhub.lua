@@ -53,7 +53,7 @@ local Z_SHADOW  = 1
 local Z_ICON    = 20
 
 local S = { screen = true, ragdoll = true, move = true, tp = true, mute = true,
-	recover = true, float = UIS.TouchEnabled }
+	recover = false, float = UIS.TouchEnabled }
 local api = {
 	running = false, standoff = 9, retreat = 30, escapeH = 60,
 	allow = {}, resume = true,
