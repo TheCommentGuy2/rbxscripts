@@ -46,9 +46,7 @@ local Z_HEAD    = 12
 local Z_HEADBTN = 13
 local Z_SIDE    = 11
 local Z_SIDECHLD = 12
-local Z_EMBLEM  = 30
 local Z_MAIN    = 2
-local Z_SHADOW  = 1
 local Z_ICON    = 20
 
 local S = { screen = true, ragdoll = true, move = true, tp = true, mute = true }
@@ -75,6 +73,10 @@ local known = {}
 local seen = {}
 local lastTravel = 0
 local tick = 0
+
+local keybind = Enum.KeyCode.RightShift
+local capturing = false
+local justBound = false
 
 local ok, err = pcall(function()
 
@@ -582,6 +584,76 @@ local function numRow(par, label, def, key, minV, maxV, y)
 	return row
 end
 
+local function keyRow(par, label, x, y)
+	local row = Instance.new("Frame")
+	row.Size = UDim2.new(1, 0, 0, 34)
+	row.Position = UDim2.fromOffset(x or 0, y)
+	row.BackgroundTransparency = 1
+	row.ZIndex = Z_BASE
+	row.Parent = par
+
+	local l = Instance.new("TextLabel")
+	l.Size = UDim2.new(1, -110, 1, 0)
+	l.BackgroundTransparency = 1
+	l.Font = THEME.Font
+	l.TextSize = 12
+	l.TextColor3 = THEME.TextDim
+	l.TextXAlignment = Enum.TextXAlignment.Left
+	l.Text = label
+	l.ZIndex = Z_BASE + 1
+	l.Parent = row
+
+	local b = Instance.new("TextButton")
+	b.Size = UDim2.fromOffset(98, 30)
+	b.Position = UDim2.new(1, -98, 0.5, -15)
+	b.BackgroundColor3 = THEME.Surface
+	b.BorderSizePixel = 0
+	b.Font = THEME.Font
+	b.TextSize = 12
+	b.TextColor3 = THEME.Text
+	b.Text = keybind.Name
+	b.AutoButtonColor = false
+	b.ZIndex = Z_BASE + 1
+	b.Parent = row
+	corner(b, THEME.RControl)
+	local bs = strokeOf(b, THEME.Stroke, 0.3)
+
+	local function show()
+		b.Text = keybind.Name
+	end
+
+	local function stop()
+		capturing = false
+		tw(bs, { Color = THEME.Stroke })
+		show()
+	end
+
+	b.MouseButton1Click:Connect(function()
+		if capturing then
+			stop()
+			return
+		end
+		capturing = true
+		b.Text = "press a key..."
+		tw(bs, { Color = THEME.Accent })
+	end)
+
+	addC(UIS.InputBegan:Connect(function(i, gp)
+		if not capturing then return end
+		if i.UserInputType ~= Enum.UserInputType.Keyboard then return end
+		if gp then return end
+		if i.KeyCode == Enum.KeyCode.Escape then
+			stop()
+			return
+		end
+		keybind = i.KeyCode
+		justBound = true
+		stop()
+	end))
+
+	return row
+end
+
 sectionHeader(pageMain, "Targets", 0, 0, 176)
 
 local search = Instance.new("TextBox")
@@ -714,10 +786,6 @@ numRow(colA, "attack distance", "9", "standoff", 4, 28, 0)
 numRow(colA, "retreat at % hp", "50", "retreat", 5, 95, 42)
 numRow(colA, "escape height", "60", "escapeH", 10, 500, 84)
 
-local setBar = descBar(pageSet, 244, 382)
-setBar.Size = UDim2.fromOffset(382, 96)
-setBar.Text = "Hover a control for details"
-
 local colB = Instance.new("Frame")
 colB.Size = UDim2.fromOffset(194, 210)
 colB.Position = UDim2.fromOffset(188, 22)
@@ -737,6 +805,13 @@ toggleRow(colB, "keep control", S, "move",
 	"On: while knocked down, WASD is injected so you keep walking. Off: you are frozen until recovery.", setBar)
 toggleRow(colB, "undo death teleport", S, "tp",
 	"On: if the game teleports you on knockdown, it rewinds you to your last good position (twice per knockdown). Off: you go where the game puts you.", setBar)
+
+sectionHeader(pageSet, "Hotkey", 0, 244, 382)
+keyRow(pageSet, "hide / show GUI", 0, 262)
+
+local setBar = descBar(pageSet, 306, 382)
+setBar.Size = UDim2.fromOffset(382, 96)
+setBar.Text = "Hover a control for details"
 
 local function release(reason)
 	if armedUntil == 0 then return end
@@ -881,7 +956,7 @@ local function approach(h)
 end
 
 local function aimAt(ep)
-	return CFrame.lookAt(ep.Position + Vector3.new(0, 0, 12), ep.Position + Vector3.new(0, 2, 0))
+	return CFrame.lookAt(ep.Position + Vector3.new(0, 0, 12), ep.Position + Vector2.new(0, 2, 0))
 end
 
 local function fireM1(ep)
@@ -1075,7 +1150,41 @@ end)
 -- ---- window drag / minimize -----------------------------
 local savedPos = main.Position
 local iconDrag, iconStart, iconPos = false, nil, nil
-local mainStart, mainPos = nil, nil
+local mainStart, mainStartCenter = nil, nil
+
+local function clampCenter(cx, cy)
+	local cam = workspace.CurrentCamera
+	local vp = cam and cam.ViewportSize or Vector2.new(1280, 720)
+	local hw, hh = THEME.W / 2, THEME.H / 2
+	local minX = math.min(hw - THEME.W + 70, vp.X - 70)
+	local maxX = math.max(hw - THEME.W + 70, vp.X - 70)
+	local minY = hh - 10
+	local maxY = math.max(minY, vp.Y - 60)
+	return math.clamp(cx, minX, maxX), math.clamp(cy, minY, maxY)
+end
+
+local function clampWindow()
+	local ap, as = main.AbsolutePosition, main.AbsoluteSize
+	local cx, cy = clampCenter(ap.X + as.X / 2, ap.Y + as.Y / 2)
+	main.Position = UDim2.fromOffset(cx, cy)
+end
+
+local function beginDrag(p)
+	local ap, as = main.AbsolutePosition, main.AbsoluteSize
+	mainStart = p
+	mainStartCenter = Vector2.new(ap.X + as.X / 2, ap.Y + as.Y / 2)
+end
+
+local function setVisible(on)
+	if on then
+		icon.Visible = false
+		main.Visible = true
+		task.defer(clampWindow)
+	else
+		main.Visible = false
+		icon.Visible = false
+	end
+end
 
 minBtn.MouseButton1Click:Connect(function()
 	savedPos = main.Position
@@ -1092,6 +1201,7 @@ icon.MouseButton1Click:Connect(function()
 	icon.Visible = false
 	main.Position = icon.Position
 	main.Visible = true
+	task.defer(clampWindow)
 end)
 
 icon.InputBegan:Connect(function(i)
@@ -1112,12 +1222,14 @@ addC(UIS.InputChanged:Connect(function(i)
 		icon.Position = UDim2.new(iconPos.X.Scale, iconPos.X.Offset + d.X, iconPos.Y.Scale, iconPos.Y.Offset + d.Y)
 	elseif mainStart then
 		local d = i.Position - mainStart
-		main.Position = UDim2.new(mainPos.X.Scale, mainPos.X.Offset + d.X, mainPos.Y.Scale, mainPos.Y.Offset + d.Y)
+		local cx, cy = clampCenter(mainStartCenter.X + d.X, mainStartCenter.Y + d.Y)
+		main.Position = UDim2.fromOffset(cx, cy)
 	end
 end))
 
 addC(UIS.InputEnded:Connect(function(i)
-	if i.UserInputType == Enum.UserInputType.MouseButton1 then
+	if i.UserInputType == Enum.UserInputType.MouseButton1
+		or i.UserInputType == Enum.UserInputType.MouseButton2 then
 		iconStart = nil
 		mainStart = nil
 	end
@@ -1125,17 +1237,51 @@ end))
 
 head.InputBegan:Connect(function(i)
 	if i.UserInputType == Enum.UserInputType.MouseButton1 then
-		mainStart = i.Position
-		mainPos = main.Position
+		beginDrag(i.Position)
 	end
 end)
 
+main.InputBegan:Connect(function(i)
+	if i.UserInputType == Enum.UserInputType.MouseButton1 then
+		beginDrag(i.Position)
+	end
+end)
+
+sidebar.InputBegan:Connect(function(i)
+	if i.UserInputType == Enum.UserInputType.MouseButton1 then
+		beginDrag(i.Position)
+	end
+end)
+
+-- right-drag works over any control, including the scroll panel
 addC(UIS.InputBegan:Connect(function(i, gp)
 	if gp then return end
+	if i.UserInputType ~= Enum.UserInputType.MouseButton2 then return end
+	if not main.Visible then return end
+	local ap, as = main.AbsolutePosition, main.AbsoluteSize
+	local p = i.Position
+	if p.X >= ap.X and p.X <= ap.X + as.X and p.Y >= ap.Y and p.Y <= ap.Y + as.Y then
+		beginDrag(p)
+	end
+end))
+
+-- ---- hotkeys --------------------------------------------
+addC(UIS.InputBegan:Connect(function(i, gp)
+	if gp then return end
+	if capturing then return end
+	if justBound then
+		justBound = false
+		return
+	end
+	if i.UserInputType ~= Enum.UserInputType.Keyboard then return end
 	if i.KeyCode == Enum.KeyCode.End then
 		if _G.FSR_UNLOAD then
 			_G.FSR_UNLOAD()
 		end
+		return
+	end
+	if i.KeyCode == keybind then
+		setVisible(not main.Visible)
 	end
 end))
 
