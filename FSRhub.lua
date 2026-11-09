@@ -786,6 +786,13 @@ numRow(colA, "attack distance", "9", "standoff", 4, 28, 0)
 numRow(colA, "retreat at % hp", "50", "retreat", 5, 95, 42)
 numRow(colA, "escape height", "60", "escapeH", 10, 500, 84)
 
+local setBar = descBar(pageSet, 306, 382)
+setBar.Size = UDim2.fromOffset(382, 96)
+setBar.Text = "Hover a control for details"
+
+sectionHeader(pageSet, "Hotkey", 0, 244, 382)
+keyRow(pageSet, "hide / show GUI", 0, 262)
+
 local colB = Instance.new("Frame")
 colB.Size = UDim2.fromOffset(194, 210)
 colB.Position = UDim2.fromOffset(188, 22)
@@ -805,13 +812,6 @@ toggleRow(colB, "keep control", S, "move",
 	"On: while knocked down, WASD is injected so you keep walking. Off: you are frozen until recovery.", setBar)
 toggleRow(colB, "undo death teleport", S, "tp",
 	"On: if the game teleports you on knockdown, it rewinds you to your last good position (twice per knockdown). Off: you go where the game puts you.", setBar)
-
-sectionHeader(pageSet, "Hotkey", 0, 244, 382)
-keyRow(pageSet, "hide / show GUI", 0, 262)
-
-local setBar = descBar(pageSet, 306, 382)
-setBar.Size = UDim2.fromOffset(382, 96)
-setBar.Text = "Hover a control for details"
 
 local function release(reason)
 	if armedUntil == 0 then return end
@@ -956,7 +956,7 @@ local function approach(h)
 end
 
 local function aimAt(ep)
-	return CFrame.lookAt(ep.Position + Vector3.new(0, 0, 12), ep.Position + Vector2.new(0, 2, 0))
+	return CFrame.lookAt(ep.Position + Vector3.new(0, 0, 12), ep.Position + Vector3.new(0, 2, 0))
 end
 
 local function fireM1(ep)
@@ -1152,9 +1152,13 @@ local savedPos = main.Position
 local iconDrag, iconStart, iconPos = false, nil, nil
 local mainStart, mainStartCenter = nil, nil
 
-local function clampCenter(cx, cy)
+local function viewport()
 	local cam = workspace.CurrentCamera
-	local vp = cam and cam.ViewportSize or Vector2.new(1280, 720)
+	return (cam and cam.ViewportSize) or Vector2.new(1280, 720)
+end
+
+local function clampCenter(cx, cy)
+	local vp = viewport()
 	local hw, hh = THEME.W / 2, THEME.H / 2
 	local minX = math.min(hw - THEME.W + 70, vp.X - 70)
 	local maxX = math.max(hw - THEME.W + 70, vp.X - 70)
@@ -1163,9 +1167,17 @@ local function clampCenter(cx, cy)
 	return math.clamp(cx, minX, maxX), math.clamp(cy, minY, maxY)
 end
 
-local function clampWindow()
-	local ap, as = main.AbsolutePosition, main.AbsoluteSize
-	local cx, cy = clampCenter(ap.X + as.X / 2, ap.Y + as.Y / 2)
+local function centerOf(pos)
+	if pos.X.Scale == 0 and pos.Y.Scale == 0 then
+		return pos.X.Offset, pos.Y.Offset
+	end
+	local vp = viewport()
+	return vp.X / 2, vp.Y / 2
+end
+
+local function placeAt(pos)
+	local cx, cy = centerOf(pos)
+	cx, cy = clampCenter(cx, cy)
 	main.Position = UDim2.fromOffset(cx, cy)
 end
 
@@ -1177,12 +1189,16 @@ end
 
 local function setVisible(on)
 	if on then
+		if main.Visible then return end
 		icon.Visible = false
+		placeAt(savedPos)
 		main.Visible = true
-		task.defer(clampWindow)
 	else
+		if not main.Visible then return end
+		savedPos = main.Position
 		main.Visible = false
-		icon.Visible = false
+		icon.Position = savedPos
+		icon.Visible = true
 	end
 end
 
@@ -1199,9 +1215,8 @@ icon.MouseButton1Click:Connect(function()
 		return
 	end
 	icon.Visible = false
-	main.Position = icon.Position
+	placeAt(icon.Position)
 	main.Visible = true
-	task.defer(clampWindow)
 end)
 
 icon.InputBegan:Connect(function(i)
@@ -1219,7 +1234,11 @@ addC(UIS.InputChanged:Connect(function(i)
 		if d.Magnitude > 3 then
 			iconDrag = true
 		end
-		icon.Position = UDim2.new(iconPos.X.Scale, iconPos.X.Offset + d.X, iconPos.Y.Scale, iconPos.Y.Offset + d.Y)
+		local vp = viewport()
+		local bx, by = centerOf(iconPos)
+		local ix = math.clamp(bx + d.X, 24, math.max(24, vp.X - 24))
+		local iy = math.clamp(by + d.Y, 24, math.max(24, vp.Y - 24))
+		icon.Position = UDim2.fromOffset(ix, iy)
 	elseif mainStart then
 		local d = i.Position - mainStart
 		local cx, cy = clampCenter(mainStartCenter.X + d.X, mainStartCenter.Y + d.Y)
@@ -1253,7 +1272,6 @@ sidebar.InputBegan:Connect(function(i)
 	end
 end)
 
--- right-drag works over any control, including the scroll panel
 addC(UIS.InputBegan:Connect(function(i, gp)
 	if gp then return end
 	if i.UserInputType ~= Enum.UserInputType.MouseButton2 then return end
