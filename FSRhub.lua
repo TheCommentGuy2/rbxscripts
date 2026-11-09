@@ -2,6 +2,7 @@ local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
 local UIS = game:GetService("UserInputService")
 local TweenService = game:GetService("TweenService")
+local GuiService = game:GetService("GuiService")
 local lp = Players.LocalPlayer
 
 if _G.FSR_UNLOAD then pcall(_G.FSR_UNLOAD) end
@@ -25,7 +26,7 @@ local THEME = {
 	AccentDeep = Color3.fromRGB(21, 47, 53),
 
 	W          = 580,
-	H          = 360,
+	H          = 400,
 	SidebarW   = 162,
 	Pad        = 18,
 
@@ -51,9 +52,10 @@ local Z_MAIN    = 2
 local Z_SHADOW  = 1
 local Z_ICON    = 20
 
-local S = { screen = true, ragdoll = true, move = true, tp = true, mute = true }
+local S = { screen = true, ragdoll = true, move = true, tp = true, mute = true,
+	recover = true, float = UIS.TouchEnabled }
 local api = {
-	running = false, standoff = 9, retreat = 50, escapeH = 60,
+	running = false, standoff = 9, retreat = 30, escapeH = 60,
 	allow = {}, resume = true,
 	kills = 0, dmg = 0, t0 = 0, preferName = nil,
 	toggleKey = Enum.KeyCode.RightShift,
@@ -81,6 +83,7 @@ local ok, err = pcall(function()
 
 local alive = true
 local baseWalk = 16
+local floatGui, fbtn
 
 local function corner(o, r)
 	local c = Instance.new("UICorner")
@@ -304,7 +307,7 @@ pageMain.ZIndex = Z_BASE
 pageMain.Parent = content
 
 local pageSet = Instance.new("Frame")
-pageSet.Size = UDim2.fromOffset(382, 420)
+pageSet.Size = UDim2.fromOffset(382, 360)
 pageSet.Position = UDim2.fromOffset(THEME.Pad, 34)
 pageSet.BackgroundTransparency = 1
 pageSet.Visible = false
@@ -527,6 +530,12 @@ local function toggleRow(par, label, tbl, key, desc, bar)
 				end
 			end
 		end
+		if key == "recover" and not S.recover then
+			escaping = false
+		end
+		if key == "float" and floatGui then
+			floatGui.Enabled = S.float
+		end
 		paint()
 	end)
 	if desc and bar then
@@ -705,18 +714,18 @@ sectionHeader(pageSet, "Combat tuning", 0, 0, 176)
 sectionHeader(pageSet, "Survivability", 188, 0, 194)
 
 local colA = Instance.new("Frame")
-colA.Size = UDim2.fromOffset(176, 206)
+colA.Size = UDim2.fromOffset(176, 224)
 colA.Position = UDim2.fromOffset(0, 22)
 colA.BackgroundTransparency = 1
 colA.ZIndex = Z_BASE
 colA.Parent = pageSet
 
 numRow(colA, "attack distance", "9", "standoff", 4, 28, 0)
-numRow(colA, "retreat at % hp", "50", "retreat", 5, 95, 42)
-numRow(colA, "escape height", "60", "escapeH", 10, 500, 84)
+numRow(colA, "retreat at % hp", "30", "retreat", 5, 95, 38)
+numRow(colA, "escape height", "60", "escapeH", 10, 500, 76)
 
-local setBar = descBar(pageSet, 244, 382)
-setBar.Size = UDim2.fromOffset(382, 96)
+local setBar = descBar(pageSet, 254, 382)
+setBar.Size = UDim2.fromOffset(382, 100)
 setBar.Text = "Hover a control for details"
 
 -- ---- hotkey row + center button (settings) --------------
@@ -726,7 +735,7 @@ local keyBtn, keyStroke
 do
 	local row = Instance.new("Frame")
 	row.Size = UDim2.new(1, 0, 0, 34)
-	row.Position = UDim2.fromOffset(0, 126)
+	row.Position = UDim2.fromOffset(0, 114)
 	row.BackgroundTransparency = 1
 	row.ZIndex = Z_BASE
 	row.Parent = colA
@@ -766,7 +775,7 @@ do
 
 	local cb = Instance.new("TextButton")
 	cb.Size = UDim2.fromOffset(176, 30)
-	cb.Position = UDim2.fromOffset(0, 172)
+	cb.Position = UDim2.fromOffset(0, 152)
 	cb.BackgroundColor3 = THEME.Raised
 	cb.BorderSizePixel = 0
 	cb.AutoButtonColor = false
@@ -782,19 +791,26 @@ do
 	cb.MouseButton1Click:Connect(function()
 		main.Position = UDim2.new(0.5, 0, 0.5, 0)
 		icon.Position = UDim2.new(0.5, 0, 0.5, 0)
+		if fbtn then fbtn.Position = UDim2.new(1, -40, 0, 110) end
 	end)
 	hookDesc(cb, setBar, "Moves the window (and minimised icon) back to the centre of the screen.")
 end
 
+local floatRow = toggleRow(colA, "floating button", S, "float",
+	"On: a small FSR button stays on screen (drag it anywhere) to hide/show the GUI without a hotkey. Default on for mobile.", setBar)
+floatRow.Position = UDim2.fromOffset(0, 188)
+
 local colB = Instance.new("Frame")
-colB.Size = UDim2.fromOffset(194, 210)
+colB.Size = UDim2.fromOffset(194, 224)
 colB.Position = UDim2.fromOffset(188, 22)
 colB.BackgroundTransparency = 1
 colB.ZIndex = Z_BASE
 colB.Parent = pageSet
 local blay = Instance.new("UIListLayout", colB)
-blay.Padding = UDim.new(0, 8)
+blay.Padding = UDim.new(0, 4)
 
+toggleRow(colB, "retreat to heal", S, "recover",
+	"On: at the retreat % HP you float above the enemy until HP is +5% higher. Off: never retreats, so the enemy gets no time to heal; if you die, resume after death sends you back.", setBar)
 toggleRow(colB, "block death screen", S, "screen",
 	"On: the Death Screen overlay is hidden so your view stays clear. Off: normal death screen.", setBar)
 toggleRow(colB, "mute death sound", S, "mute",
@@ -977,10 +993,14 @@ local function hpPct()
 end
 
 local function hpGuard()
+	if not S.recover then
+		escaping = false
+		return
+	end
 	local pct = hpPct()
 	if not escaping and pct <= api.retreat then
 		escaping = true
-	elseif escaping and pct >= math.min(api.retreat + 15, 99) then
+	elseif escaping and pct >= math.min(api.retreat + 5, 99) then
 		escaping = false
 	end
 end
@@ -1146,7 +1166,7 @@ local function viewport()
 	return cam and cam.ViewportSize or Vector2.new(1280, 720)
 end
 
--- both main and icon use AnchorPoint 0.5, so Position == centre
+-- main / icon / floating button all use AnchorPoint 0.5, so Position == centre
 local function centerOf(obj)
 	local vp = viewport()
 	local p = obj.Position
@@ -1164,6 +1184,7 @@ end
 local function reclamp()
 	placeClamped(main, centerOf(main), THEME.W, THEME.H)
 	placeClamped(icon, centerOf(icon), 44, 44)
+	if fbtn then placeClamped(fbtn, centerOf(fbtn), 40, 40) end
 end
 
 local function inside(o, m)
@@ -1179,7 +1200,7 @@ local function shownInMain(o)
 	return true
 end
 
--- true if the cursor is over a button / textbox / the mob list
+-- true if the pointer is over a button / textbox / the mob list
 local function overInteractive(m)
 	if pageMain.Visible and inside(list, m) then return true end
 	for _, o in ipairs(main:GetDescendants()) do
@@ -1192,9 +1213,39 @@ local function overInteractive(m)
 	return false
 end
 
+local function isPress(i)
+	return i.UserInputType == Enum.UserInputType.MouseButton1
+		or i.UserInputType == Enum.UserInputType.Touch
+end
+
+local function pointerPos(i)
+	if i.UserInputType == Enum.UserInputType.Touch then
+		return Vector2.new(i.Position.X, i.Position.Y) + GuiService:GetGuiInset()
+	end
+	return UIS:GetMouseLocation()
+end
+
+-- one shared drag state (mouse or a single touch)
+local drag = nil
+local wasDrag = false
+
+local function beginDrag(obj, w, h, i)
+	wasDrag = false
+	drag = {
+		obj = obj, w = w, h = h,
+		start = i.Position, c = centerOf(obj),
+		touch = (i.UserInputType == Enum.UserInputType.Touch) and i or nil,
+	}
+end
+
+local function toggleGui()
+	sg.Enabled = not sg.Enabled
+	if fbtn then
+		fbtn.TextColor3 = sg.Enabled and THEME.Accent or THEME.TextDim
+	end
+end
+
 local savedPos = main.Position
-local iconDrag, iconStart, iconC = false, nil, nil
-local mainStart, mainC = nil, nil
 
 minBtn.MouseButton1Click:Connect(function()
 	savedPos = main.Position
@@ -1205,8 +1256,8 @@ minBtn.MouseButton1Click:Connect(function()
 end)
 
 icon.MouseButton1Click:Connect(function()
-	if iconDrag then
-		iconDrag = false
+	if wasDrag then
+		wasDrag = false
 		return
 	end
 	icon.Visible = false
@@ -1216,37 +1267,72 @@ icon.MouseButton1Click:Connect(function()
 end)
 
 icon.InputBegan:Connect(function(i)
-	if i.UserInputType == Enum.UserInputType.MouseButton1 then
-		iconDrag = false
-		iconStart = i.Position
-		iconC = centerOf(icon)
+	if isPress(i) then beginDrag(icon, 44, 44, i) end
+end)
+
+-- floating show/hide button (own ScreenGui so it stays visible when the main GUI is hidden)
+floatGui = Instance.new("ScreenGui")
+floatGui.Name = "FSRToggle"
+floatGui.ResetOnSpawn = false
+floatGui.IgnoreGuiInset = true
+floatGui.DisplayOrder = 1000
+floatGui.Enabled = S.float
+floatGui.Parent = parentGui()
+
+fbtn = Instance.new("TextButton")
+fbtn.Size = UDim2.fromOffset(40, 40)
+fbtn.AnchorPoint = Vector2.new(0.5, 0.5)
+fbtn.Position = UDim2.new(1, -40, 0, 110)
+fbtn.BackgroundColor3 = THEME.Window
+fbtn.BackgroundTransparency = 0.12
+fbtn.BorderSizePixel = 0
+fbtn.AutoButtonColor = false
+fbtn.Font = THEME.FontBold
+fbtn.TextSize = 11
+fbtn.TextColor3 = THEME.Accent
+fbtn.Text = "FSR"
+fbtn.ZIndex = Z_ICON
+fbtn.Parent = floatGui
+pillCorner(fbtn)
+strokeOf(fbtn, THEME.Accent, 0.35)
+
+fbtn.Activated:Connect(function()
+	if wasDrag then
+		wasDrag = false
+		return
 	end
+	toggleGui()
+end)
+fbtn.InputBegan:Connect(function(i)
+	if isPress(i) then beginDrag(fbtn, 40, 40, i) end
 end)
 
 addC(UIS.InputChanged:Connect(function(i)
-	if i.UserInputType ~= Enum.UserInputType.MouseMovement then return end
-	if iconStart then
-		local d = i.Position - iconStart
-		if d.Magnitude > 3 then
-			iconDrag = true
-		end
-		placeClamped(icon, iconC + Vector2.new(d.X, d.Y), 44, 44)
-	elseif mainStart then
-		local d = i.Position - mainStart
-		placeClamped(main, mainC + Vector2.new(d.X, d.Y), THEME.W, THEME.H)
+	if not drag then return end
+	if drag.touch then
+		if i ~= drag.touch then return end
+	elseif i.UserInputType ~= Enum.UserInputType.MouseMovement then
+		return
 	end
+	local d = i.Position - drag.start
+	if d.Magnitude > 3 then
+		wasDrag = true
+	end
+	placeClamped(drag.obj, drag.c + Vector2.new(d.X, d.Y), drag.w, drag.h)
 end))
 
 addC(UIS.InputEnded:Connect(function(i)
-	if i.UserInputType == Enum.UserInputType.MouseButton1 then
-		iconStart = nil
-		mainStart = nil
+	if not drag or not isPress(i) then return end
+	if drag.touch then
+		if i == drag.touch then drag = nil end
+	else
+		drag = nil
 	end
 end))
 
 addC(UIS.InputBegan:Connect(function(i, gp)
 	-- cancel key capture if the user clicks elsewhere
-	if listening and i.UserInputType == Enum.UserInputType.MouseButton1 then
+	if listening and isPress(i) then
 		listening = false
 		keyBtn.Text = api.toggleKey.Name
 		tw(keyStroke, { Color = THEME.Stroke })
@@ -1254,11 +1340,11 @@ addC(UIS.InputBegan:Connect(function(i, gp)
 	end
 
 	-- start dragging from anywhere on the window that isn't a control
-	if i.UserInputType == Enum.UserInputType.MouseButton1 and sg.Enabled and main.Visible then
-		local m = UIS:GetMouseLocation()
-		if inside(main, m) and not overInteractive(m) then
-			mainStart = i.Position
-			mainC = centerOf(main)
+	if isPress(i) and sg.Enabled and main.Visible then
+		local m = pointerPos(i)
+		local onFloat = floatGui.Enabled and inside(fbtn, m)
+		if inside(main, m) and not onFloat and not overInteractive(m) then
+			beginDrag(main, THEME.W, THEME.H, i)
 		end
 	end
 
@@ -1280,7 +1366,7 @@ addC(UIS.InputBegan:Connect(function(i, gp)
 
 	-- hide / show the whole GUI (script keeps running)
 	if i.KeyCode == api.toggleKey then
-		sg.Enabled = not sg.Enabled
+		toggleGui()
 		return
 	end
 
@@ -1357,6 +1443,7 @@ _G.FSR_UNLOAD = function()
 	savedVol = nil
 	filterText = ""
 
+	if floatGui then pcall(function() floatGui:Destroy() end) end
 	sg:Destroy()
 	print("[FSR] unloaded")
 end
