@@ -46,7 +46,9 @@ local Z_HEAD    = 12
 local Z_HEADBTN = 13
 local Z_SIDE    = 11
 local Z_SIDECHLD = 12
+local Z_EMBLEM  = 30
 local Z_MAIN    = 2
+local Z_SHADOW  = 1
 local Z_ICON    = 20
 
 local S = { screen = true, ragdoll = true, move = true, tp = true, mute = true }
@@ -54,6 +56,7 @@ local api = {
 	running = false, standoff = 9, retreat = 50, escapeH = 60,
 	allow = {}, resume = true,
 	kills = 0, dmg = 0, t0 = 0, preferName = nil,
+	toggleKey = Enum.KeyCode.RightShift,
 }
 local conns = {}
 local function addC(c) table.insert(conns, c) return c end
@@ -73,10 +76,6 @@ local known = {}
 local seen = {}
 local lastTravel = 0
 local tick = 0
-
-local keybind = Enum.KeyCode.RightShift
-local capturing = false
-local justBound = false
 
 local ok, err = pcall(function()
 
@@ -584,76 +583,6 @@ local function numRow(par, label, def, key, minV, maxV, y)
 	return row
 end
 
-local function keyRow(par, label, x, y)
-	local row = Instance.new("Frame")
-	row.Size = UDim2.new(1, 0, 0, 34)
-	row.Position = UDim2.fromOffset(x or 0, y)
-	row.BackgroundTransparency = 1
-	row.ZIndex = Z_BASE
-	row.Parent = par
-
-	local l = Instance.new("TextLabel")
-	l.Size = UDim2.new(1, -110, 1, 0)
-	l.BackgroundTransparency = 1
-	l.Font = THEME.Font
-	l.TextSize = 12
-	l.TextColor3 = THEME.TextDim
-	l.TextXAlignment = Enum.TextXAlignment.Left
-	l.Text = label
-	l.ZIndex = Z_BASE + 1
-	l.Parent = row
-
-	local b = Instance.new("TextButton")
-	b.Size = UDim2.fromOffset(98, 30)
-	b.Position = UDim2.new(1, -98, 0.5, -15)
-	b.BackgroundColor3 = THEME.Surface
-	b.BorderSizePixel = 0
-	b.Font = THEME.Font
-	b.TextSize = 12
-	b.TextColor3 = THEME.Text
-	b.Text = keybind.Name
-	b.AutoButtonColor = false
-	b.ZIndex = Z_BASE + 1
-	b.Parent = row
-	corner(b, THEME.RControl)
-	local bs = strokeOf(b, THEME.Stroke, 0.3)
-
-	local function show()
-		b.Text = keybind.Name
-	end
-
-	local function stop()
-		capturing = false
-		tw(bs, { Color = THEME.Stroke })
-		show()
-	end
-
-	b.MouseButton1Click:Connect(function()
-		if capturing then
-			stop()
-			return
-		end
-		capturing = true
-		b.Text = "press a key..."
-		tw(bs, { Color = THEME.Accent })
-	end)
-
-	addC(UIS.InputBegan:Connect(function(i, gp)
-		if not capturing then return end
-		if i.UserInputType ~= Enum.UserInputType.Keyboard then return end
-		if gp then return end
-		if i.KeyCode == Enum.KeyCode.Escape then
-			stop()
-			return
-		end
-		keybind = i.KeyCode
-		justBound = true
-		stop()
-	end))
-
-	return row
-end
-
 sectionHeader(pageMain, "Targets", 0, 0, 176)
 
 local search = Instance.new("TextBox")
@@ -776,7 +705,7 @@ sectionHeader(pageSet, "Combat tuning", 0, 0, 176)
 sectionHeader(pageSet, "Survivability", 188, 0, 194)
 
 local colA = Instance.new("Frame")
-colA.Size = UDim2.fromOffset(176, 128)
+colA.Size = UDim2.fromOffset(176, 206)
 colA.Position = UDim2.fromOffset(0, 22)
 colA.BackgroundTransparency = 1
 colA.ZIndex = Z_BASE
@@ -786,12 +715,76 @@ numRow(colA, "attack distance", "9", "standoff", 4, 28, 0)
 numRow(colA, "retreat at % hp", "50", "retreat", 5, 95, 42)
 numRow(colA, "escape height", "60", "escapeH", 10, 500, 84)
 
-local setBar = descBar(pageSet, 306, 382)
+local setBar = descBar(pageSet, 244, 382)
 setBar.Size = UDim2.fromOffset(382, 96)
 setBar.Text = "Hover a control for details"
 
-sectionHeader(pageSet, "Hotkey", 0, 244, 382)
-keyRow(pageSet, "hide / show GUI", 0, 262)
+-- ---- hotkey row + center button (settings) --------------
+local listening = false
+local keyBtn, keyStroke
+
+do
+	local row = Instance.new("Frame")
+	row.Size = UDim2.new(1, 0, 0, 34)
+	row.Position = UDim2.fromOffset(0, 126)
+	row.BackgroundTransparency = 1
+	row.ZIndex = Z_BASE
+	row.Parent = colA
+
+	local l = Instance.new("TextLabel")
+	l.Size = UDim2.new(1, -96, 1, 0)
+	l.BackgroundTransparency = 1
+	l.Font = THEME.Font
+	l.TextSize = 12
+	l.TextColor3 = THEME.TextDim
+	l.TextXAlignment = Enum.TextXAlignment.Left
+	l.Text = "hide/show key"
+	l.ZIndex = Z_BASE + 1
+	l.Parent = row
+
+	keyBtn = Instance.new("TextButton")
+	keyBtn.Size = UDim2.fromOffset(88, 30)
+	keyBtn.Position = UDim2.new(1, -88, 0.5, -15)
+	keyBtn.BackgroundColor3 = THEME.Surface
+	keyBtn.BorderSizePixel = 0
+	keyBtn.AutoButtonColor = false
+	keyBtn.Font = THEME.FontMedium
+	keyBtn.TextSize = 11
+	keyBtn.TextColor3 = THEME.Text
+	keyBtn.Text = api.toggleKey.Name
+	keyBtn.ZIndex = Z_BASE + 1
+	keyBtn.Parent = row
+	corner(keyBtn, THEME.RControl)
+	keyStroke = strokeOf(keyBtn, THEME.Stroke, 0.3)
+
+	keyBtn.MouseButton1Click:Connect(function()
+		listening = true
+		keyBtn.Text = "press key..."
+		tw(keyStroke, { Color = THEME.Accent })
+	end)
+	hookDesc(keyBtn, setBar, "Click, then press a key to set the hide/show hotkey. Esc cancels. End still unloads the script.")
+
+	local cb = Instance.new("TextButton")
+	cb.Size = UDim2.fromOffset(176, 30)
+	cb.Position = UDim2.fromOffset(0, 172)
+	cb.BackgroundColor3 = THEME.Raised
+	cb.BorderSizePixel = 0
+	cb.AutoButtonColor = false
+	cb.Font = THEME.FontMedium
+	cb.TextSize = 12
+	cb.TextColor3 = THEME.TextDim
+	cb.Text = "center window"
+	cb.ZIndex = Z_BASE + 1
+	cb.Parent = colA
+	corner(cb, THEME.RControl)
+	cb.MouseEnter:Connect(function() cb.BackgroundColor3 = THEME.HoverBg end)
+	cb.MouseLeave:Connect(function() cb.BackgroundColor3 = THEME.Raised end)
+	cb.MouseButton1Click:Connect(function()
+		main.Position = UDim2.new(0.5, 0, 0.5, 0)
+		icon.Position = UDim2.new(0.5, 0, 0.5, 0)
+	end)
+	hookDesc(cb, setBar, "Moves the window (and minimised icon) back to the centre of the screen.")
+end
 
 local colB = Instance.new("Frame")
 colB.Size = UDim2.fromOffset(194, 210)
@@ -1147,66 +1140,68 @@ runBtn.MouseButton1Click:Connect(function()
 	end
 end)
 
--- ---- window drag / minimize -----------------------------
-local savedPos = main.Position
-local iconDrag, iconStart, iconPos = false, nil, nil
-local mainStart, mainStartCenter = nil, nil
-
+-- ---- window drag (anywhere) / clamp / minimize ----------
 local function viewport()
 	local cam = workspace.CurrentCamera
-	return (cam and cam.ViewportSize) or Vector2.new(1280, 720)
+	return cam and cam.ViewportSize or Vector2.new(1280, 720)
 end
 
-local function clampCenter(cx, cy)
+-- both main and icon use AnchorPoint 0.5, so Position == centre
+local function centerOf(obj)
 	local vp = viewport()
-	local hw, hh = THEME.W / 2, THEME.H / 2
-	local minX = math.min(hw - THEME.W + 70, vp.X - 70)
-	local maxX = math.max(hw - THEME.W + 70, vp.X - 70)
-	local minY = hh - 10
-	local maxY = math.max(minY, vp.Y - 60)
-	return math.clamp(cx, minX, maxX), math.clamp(cy, minY, maxY)
+	local p = obj.Position
+	return Vector2.new(p.X.Scale * vp.X + p.X.Offset, p.Y.Scale * vp.Y + p.Y.Offset)
 end
 
-local function centerOf(pos)
-	if pos.X.Scale == 0 and pos.Y.Scale == 0 then
-		return pos.X.Offset, pos.Y.Offset
-	end
+-- keeps the whole object inside the screen so it can never get lost
+local function placeClamped(obj, c, w, h)
 	local vp = viewport()
-	return vp.X / 2, vp.Y / 2
+	local x = (vp.X <= w) and (vp.X / 2) or math.clamp(c.X, w / 2, vp.X - w / 2)
+	local y = (vp.Y <= h) and (vp.Y / 2) or math.clamp(c.Y, h / 2, vp.Y - h / 2)
+	obj.Position = UDim2.fromOffset(x, y)
 end
 
-local function placeAt(pos)
-	local cx, cy = centerOf(pos)
-	cx, cy = clampCenter(cx, cy)
-	main.Position = UDim2.fromOffset(cx, cy)
+local function reclamp()
+	placeClamped(main, centerOf(main), THEME.W, THEME.H)
+	placeClamped(icon, centerOf(icon), 44, 44)
 end
 
-local function beginDrag(p)
-	local ap, as = main.AbsolutePosition, main.AbsoluteSize
-	mainStart = p
-	mainStartCenter = Vector2.new(ap.X + as.X / 2, ap.Y + as.Y / 2)
+local function inside(o, m)
+	local p, s = o.AbsolutePosition, o.AbsoluteSize
+	return m.X >= p.X and m.X <= p.X + s.X and m.Y >= p.Y and m.Y <= p.Y + s.Y
 end
 
-local function setVisible(on)
-	if on then
-		if main.Visible then return end
-		icon.Visible = false
-		placeAt(savedPos)
-		main.Visible = true
-	else
-		if not main.Visible then return end
-		savedPos = main.Position
-		main.Visible = false
-		icon.Position = savedPos
-		icon.Visible = true
+local function shownInMain(o)
+	while o and o ~= main do
+		if o:IsA("GuiObject") and not o.Visible then return false end
+		o = o.Parent
 	end
+	return true
 end
+
+-- true if the cursor is over a button / textbox / the mob list
+local function overInteractive(m)
+	if pageMain.Visible and inside(list, m) then return true end
+	for _, o in ipairs(main:GetDescendants()) do
+		if (o:IsA("TextButton") or o:IsA("TextBox")) and not o:IsDescendantOf(list) then
+			if shownInMain(o) and inside(o, m) then
+				return true
+			end
+		end
+	end
+	return false
+end
+
+local savedPos = main.Position
+local iconDrag, iconStart, iconC = false, nil, nil
+local mainStart, mainC = nil, nil
 
 minBtn.MouseButton1Click:Connect(function()
 	savedPos = main.Position
 	main.Visible = false
 	icon.Position = savedPos
 	icon.Visible = true
+	placeClamped(icon, centerOf(icon), 44, 44)
 end)
 
 icon.MouseButton1Click:Connect(function()
@@ -1215,7 +1210,8 @@ icon.MouseButton1Click:Connect(function()
 		return
 	end
 	icon.Visible = false
-	placeAt(icon.Position)
+	main.Position = icon.Position
+	placeClamped(main, centerOf(main), THEME.W, THEME.H)
 	main.Visible = true
 end)
 
@@ -1223,7 +1219,7 @@ icon.InputBegan:Connect(function(i)
 	if i.UserInputType == Enum.UserInputType.MouseButton1 then
 		iconDrag = false
 		iconStart = i.Position
-		iconPos = icon.Position
+		iconC = centerOf(icon)
 	end
 end)
 
@@ -1234,74 +1230,75 @@ addC(UIS.InputChanged:Connect(function(i)
 		if d.Magnitude > 3 then
 			iconDrag = true
 		end
-		local vp = viewport()
-		local bx, by = centerOf(iconPos)
-		local ix = math.clamp(bx + d.X, 24, math.max(24, vp.X - 24))
-		local iy = math.clamp(by + d.Y, 24, math.max(24, vp.Y - 24))
-		icon.Position = UDim2.fromOffset(ix, iy)
+		placeClamped(icon, iconC + Vector2.new(d.X, d.Y), 44, 44)
 	elseif mainStart then
 		local d = i.Position - mainStart
-		local cx, cy = clampCenter(mainStartCenter.X + d.X, mainStartCenter.Y + d.Y)
-		main.Position = UDim2.fromOffset(cx, cy)
+		placeClamped(main, mainC + Vector2.new(d.X, d.Y), THEME.W, THEME.H)
 	end
 end))
 
 addC(UIS.InputEnded:Connect(function(i)
-	if i.UserInputType == Enum.UserInputType.MouseButton1
-		or i.UserInputType == Enum.UserInputType.MouseButton2 then
+	if i.UserInputType == Enum.UserInputType.MouseButton1 then
 		iconStart = nil
 		mainStart = nil
 	end
 end))
 
-head.InputBegan:Connect(function(i)
-	if i.UserInputType == Enum.UserInputType.MouseButton1 then
-		beginDrag(i.Position)
-	end
-end)
-
-main.InputBegan:Connect(function(i)
-	if i.UserInputType == Enum.UserInputType.MouseButton1 then
-		beginDrag(i.Position)
-	end
-end)
-
-sidebar.InputBegan:Connect(function(i)
-	if i.UserInputType == Enum.UserInputType.MouseButton1 then
-		beginDrag(i.Position)
-	end
-end)
-
 addC(UIS.InputBegan:Connect(function(i, gp)
-	if gp then return end
-	if i.UserInputType ~= Enum.UserInputType.MouseButton2 then return end
-	if not main.Visible then return end
-	local ap, as = main.AbsolutePosition, main.AbsoluteSize
-	local p = i.Position
-	if p.X >= ap.X and p.X <= ap.X + as.X and p.Y >= ap.Y and p.Y <= ap.Y + as.Y then
-		beginDrag(p)
-	end
-end))
-
--- ---- hotkeys --------------------------------------------
-addC(UIS.InputBegan:Connect(function(i, gp)
-	if gp then return end
-	if capturing then return end
-	if justBound then
-		justBound = false
+	-- cancel key capture if the user clicks elsewhere
+	if listening and i.UserInputType == Enum.UserInputType.MouseButton1 then
+		listening = false
+		keyBtn.Text = api.toggleKey.Name
+		tw(keyStroke, { Color = THEME.Stroke })
 		return
 	end
-	if i.UserInputType ~= Enum.UserInputType.Keyboard then return end
+
+	-- start dragging from anywhere on the window that isn't a control
+	if i.UserInputType == Enum.UserInputType.MouseButton1 and sg.Enabled and main.Visible then
+		local m = UIS:GetMouseLocation()
+		if inside(main, m) and not overInteractive(m) then
+			mainStart = i.Position
+			mainC = centerOf(main)
+		end
+	end
+
+	-- hotkey capture
+	if listening then
+		if i.UserInputType == Enum.UserInputType.Keyboard then
+			listening = false
+			local k = i.KeyCode
+			if k ~= Enum.KeyCode.Escape and k ~= Enum.KeyCode.End and k ~= Enum.KeyCode.Unknown then
+				api.toggleKey = k
+			end
+			keyBtn.Text = api.toggleKey.Name
+			tw(keyStroke, { Color = THEME.Stroke })
+		end
+		return
+	end
+
+	if gp then return end
+
+	-- hide / show the whole GUI (script keeps running)
+	if i.KeyCode == api.toggleKey then
+		sg.Enabled = not sg.Enabled
+		return
+	end
+
 	if i.KeyCode == Enum.KeyCode.End then
 		if _G.FSR_UNLOAD then
 			_G.FSR_UNLOAD()
 		end
-		return
-	end
-	if i.KeyCode == keybind then
-		setVisible(not main.Visible)
 	end
 end))
+
+-- re-clamp when the screen/viewport size changes
+do
+	local cam = workspace.CurrentCamera
+	if cam then
+		addC(cam:GetPropertyChangedSignal("ViewportSize"):Connect(reclamp))
+	end
+end
+reclamp()
 
 closeBtn.MouseButton1Click:Connect(function()
 	if _G.FSR_UNLOAD then
@@ -1313,6 +1310,7 @@ _G.FSR_UNLOAD = function()
 	_G.FSR_UNLOAD = nil
 
 	alive = false
+	listening = false
 	api.running = false
 	escaping = false
 	armedUntil = 0
