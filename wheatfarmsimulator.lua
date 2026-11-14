@@ -14,30 +14,42 @@ local F = {
     running = false, speed = 20, rebirth = false,
     rebirthBusy = false, sold = 0, rebirths = 0,
     collapsed = false, keybind = Enum.KeyCode.LeftControl, unloaded = false,
-    selling = false, patrolConn = nil, noclip = false, autoTame = false, tameBusy = false, selected = {},
+    selling = false, patrolConn = nil, noclip = false, autoTame = false, tameBusy = false, selected = {}, gemOnly = false, gemBusy = false,
 }
 local function getHrp() local c = plr.Character return c and c:FindFirstChild("HumanoidRootPart") end
 local function invFull() return plr.Wheat.Value >= ((plr:GetAttribute("InventorySize") or 100) - 1) end
 
 local function buildRoute()
     local rows, order = {}, {}
+    local rainOnly = {}
     for _, d in ipairs(workspace:GetChildren()) do
         if d:IsA("Model") and d:GetAttribute("Wheat") then
             local v3 = d:FindFirstChildWhichIsA("Vector3Value")
             if v3 then
                 local p = v3.Value
                 local key = math.floor(p.Z / 5)
+                local node = { x = p.X, y = p.Y, z = p.Z, row = key }
                 rows[key] = rows[key] or {}
-                table.insert(rows[key], { x = p.X, y = p.Y, z = p.Z })
+                table.insert(rows[key], node)
+                if string.find(d.Name, "Rainbow") then
+                    rainOnly[key] = rainOnly[key] or {}
+                    table.insert(rainOnly[key], node)
+                end
             end
         end
     end
+    local src = rows
+    if F.gemOnly then
+        local n = 0
+        for _ in pairs(rainOnly) do n = n + 1 end
+        if n > 0 then src = rainOnly end
+    end
     local keys = {}
-    for k in pairs(rows) do table.insert(keys, k) end
+    for k in pairs(src) do table.insert(keys, k) end
     table.sort(keys)
     local flip = false
     for _, k in ipairs(keys) do
-        local row = rows[k]
+        local row = src[k]
         table.sort(row, function(a, b) return a.x < b.x end)
         if flip then
             for i = #row, 1, -1 do table.insert(order, row[i]) end
@@ -585,6 +597,53 @@ on(ncBtn.MouseButton1Click, function()
     if F.running then setNoclip(F.noclip) end
 end)
 
+local gRow = toggleRow(farmPanel, "Gem Focus", "Prioritise rainbow wheat and gems spawn. Will still farm wheat")
+local gBtn = mkBtn("Gem Focus: OFF", 0, 24, T.off)
+gBtn.Parent = gRow
+placePill(gBtn)
+gBtn.TextColor3 = T.text
+gBtn.BackgroundColor3 = T.off
+
+on(gBtn.MouseButton1Click, function()
+    F.gemOnly = not F.gemOnly
+    gBtn.Text = "Gem Focus: " .. (F.gemOnly and "ON" or "OFF")
+    styleToggle(gBtn, F.gemOnly)
+end)
+
+task.spawn(function()
+    while true do
+        task.wait(0.3)
+        if F.unloaded then break end
+        if F.running and F.gemOnly and not F.gemBusy and not F.selling and not F.tameBusy and not F.rebirthBusy then
+            local hrp = getHrp()
+            if hrp then
+                local target
+                for _, d in ipairs(workspace:GetChildren()) do
+                    if d:IsA("BasePart") or d:IsA("Model") then
+                        local n = d.Name
+                        if string.find(n, "Gem") or string.find(n, "gem") or string.find(n, "Crystal") then
+                            target = d
+                            break
+                        end
+                    end
+                end
+                if target then
+                    local part = target:IsA("BasePart") and target or target.PrimaryPart or target:FindFirstChildWhichIsA("BasePart")
+                    if part then
+                        F.gemBusy = true
+                        local back = hrp.CFrame
+                        hrp.CFrame = CFrame.new(part.Position + Vector3.new(0, 4, 0))
+                        task.wait(0.2)
+                        hrp = getHrp()
+                        if hrp and F.running then hrp.CFrame = back end
+                        F.gemBusy = false
+                    end
+                end
+            end
+        end
+    end
+end)
+
 local petVars
 local function getVars()
     if petVars then return petVars end
@@ -974,7 +1033,7 @@ local function patrol()
     if hrp then hrp.CFrame = CFrame.new(path[1].x, GY, path[1].z) end
 
     F.patrolConn = RUN.Heartbeat:Connect(function(stepDt)
-        if not F.running or F.selling or F.rebirthBusy or F.tameBusy then return end
+        if not F.running or F.selling or F.rebirthBusy or F.tameBusy or F.gemBusy then return end
         local root = getHrp()
         if not root then return end
 
