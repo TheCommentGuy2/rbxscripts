@@ -3,6 +3,7 @@ local UIS = game:GetService("UserInputService")
 local PG = plr:WaitForChild("PlayerGui")
 local RF = game:GetService("ReplicatedStorage").RemoteFunctions
 local TS = game:GetService("TweenService")
+local RUN = game:GetService("RunService")
 
 local ANCHOR = Vector3.new(97.60, 46.39, -429.05)
 local GY = 49.5
@@ -13,39 +14,39 @@ local F = {
     running = false, speed = 20, rebirth = false,
     rebirthBusy = false, sold = 0, rebirths = 0,
     collapsed = false, keybind = Enum.KeyCode.LeftControl, unloaded = false,
+    selling = false, patrolConn = nil, noclip = false,
 }
 local function getHrp() local c = plr.Character return c and c:FindFirstChild("HumanoidRootPart") end
 local function invFull() return plr.Wheat.Value >= ((plr:GetAttribute("InventorySize") or 100) - 1) end
-local function params()
-    local d = 0.065 - (F.speed - 1) * 0.0006
-    local b = F.speed >= 66 and 3 or (F.speed >= 34 and 2 or 1)
-    return math.max(0.004, d), b
-end
 
-local lastBounds = { MINX, MAXX, MINZ, MAXZ }
-local function sweepBounds()
-    local minX, maxX, minZ, maxZ, yRef = math.huge, -math.huge, math.huge, -math.huge, nil
+local function buildRoute()
+    local rows, order = {}, {}
     for _, d in ipairs(workspace:GetChildren()) do
         if d:IsA("Model") and d:GetAttribute("Wheat") then
             local v3 = d:FindFirstChildWhichIsA("Vector3Value")
             if v3 then
                 local p = v3.Value
-                if p.X < minX then minX = p.X end
-                if p.X > maxX then maxX = p.X end
-                if p.Z < minZ then minZ = p.Z end
-                if p.Z > maxZ then maxZ = p.Z end
-                if not yRef then yRef = p.Y end
+                local key = math.floor(p.Z / 5)
+                rows[key] = rows[key] or {}
+                table.insert(rows[key], { x = p.X, y = p.Y, z = p.Z })
             end
         end
     end
-    if yRef then
-        GY = yRef + 3
-        lastBounds = {
-            math.floor(minX / 10) * 10, math.ceil(maxX / 10) * 10,
-            math.floor(minZ / 10) * 10, math.ceil(maxZ / 10) * 10,
-        }
+    local keys = {}
+    for k in pairs(rows) do table.insert(keys, k) end
+    table.sort(keys)
+    local flip = false
+    for _, k in ipairs(keys) do
+        local row = rows[k]
+        table.sort(row, function(a, b) return a.x < b.x end)
+        if flip then
+            for i = #row, 1, -1 do table.insert(order, row[i]) end
+        else
+            for i = 1, #row do table.insert(order, row[i]) end
+        end
+        flip = not flip
     end
-    return lastBounds[1], lastBounds[2], lastBounds[3], lastBounds[4]
+    return order
 end
 
 local T = {
@@ -541,7 +542,55 @@ rbBtn.BackgroundColor3 = T.off
 local rbLbl = lbl(farmPanel, "cost: ?", 10, T.muted)
 rbLbl.Size = UDim2.new(1, 0, 0, 14)
 
-local speedLbl = lbl(speedPanel, "speed " .. F.speed, 12, T.subtext)
+local noclipConn, noclipParts = nil, {}
+
+local function setNoclip(state)
+    if noclipConn then noclipConn:Disconnect() noclipConn = nil end
+
+    if state then
+        noclipParts = {}
+        noclipConn = RUN.Stepped:Connect(function()
+            local char = plr.Character
+            if not char then return end
+            for _, d in ipairs(char:GetDescendants()) do
+                if d:IsA("BasePart") and d.CanCollide then
+                    noclipParts[d] = true
+                    d.CanCollide = false
+                end
+            end
+        end)
+    else
+        for part in pairs(noclipParts) do
+            if typeof(part) == "Instance" and part:IsA("BasePart") and part.Parent then
+                part.CanCollide = true
+            end
+        end
+        noclipParts = {}
+    end
+end
+
+local ncRow = toggleRow(farmPanel, "Noclip", "Disable collisions while farming so trees don't block")
+local ncBtn = mkBtn("Noclip: OFF", 0, 24, T.off)
+ncBtn.Parent = ncRow
+placePill(ncBtn)
+ncBtn.TextColor3 = T.text
+ncBtn.BackgroundColor3 = T.off
+
+on(ncBtn.MouseButton1Click, function()
+    F.noclip = not F.noclip
+    ncBtn.Text = "Noclip: " .. (F.noclip and "ON" or "OFF")
+    styleToggle(ncBtn, F.noclip)
+    if F.running then setNoclip(F.noclip) end
+end)
+
+local FLIGHT_MIN, FLIGHT_MAX = 20, 1000
+local MAX_DT = 0.1 
+
+local function flightSpeed()
+    return FLIGHT_MIN * (FLIGHT_MAX / FLIGHT_MIN) ^ ((F.speed - 1) / 99)
+end
+
+local speedLbl = lbl(speedPanel, string.format("%d studs/s", math.floor(flightSpeed())), 12, T.subtext)
 speedLbl.Size = UDim2.new(1, 0, 0, 16)
 
 local bar = Instance.new("Frame")
@@ -572,7 +621,7 @@ stroke(knob, Color3.fromRGB(0, 0, 0), 1, 0.8)
 local function setSpeed(v)
     F.speed = math.clamp(math.floor(v + 0.5), 1, 100)
     fill.Size = UDim2.new((F.speed - 1) / 99, 0, 1, 0)
-    speedLbl.Text = "speed " .. F.speed
+    speedLbl.Text = string.format("%d studs/s", math.floor(flightSpeed()))
 end
 setSpeed(F.speed)
 local sliderDrag = false
@@ -658,13 +707,21 @@ local function getCost()
 end
 
 local function sell()
+    if F.selling then return end
     local hrp = getHrp(); if not hrp then return end
+    F.selling = true
+
+    local returnPos = hrp.Position
     local had = plr.Wheat.Value
     hrp.CFrame = CFrame.new(ANCHOR + Vector3.new(0, 3, 0))
     local t = 0
     while plr.Wheat.Value > 2 and t < 2 and F.running do task.wait(0.1) t = t + 0.1 end
     F.sold = F.sold + math.max(0, had - plr.Wheat.Value)
     task.wait(0.12)
+
+    hrp = getHrp()
+    if hrp and F.running then hrp.CFrame = CFrame.new(returnPos) end
+    F.selling = false
 end
 
 task.spawn(function()
@@ -701,47 +758,89 @@ task.spawn(function()
     end
 end)
 
-local function patrol()
-    while F.running do
-        local delay, batch = params()
-        local cols = math.floor((MAXX - MINX) / 10)
-        local rows = math.floor((MAXZ - MINZ) / 10)
-        for r = 0, rows do
-            if not F.running then break end
-            local z = MINZ + r * 10
-            local flip = (r % 2 == 1)
-            local i = 0
-            while i <= cols do
-                if not F.running then break end
-                while F.rebirthBusy do task.wait(0.01) end
-                local hrp = getHrp()
-                if not hrp then task.wait(0.2) else
-                    delay, batch = params()
-                    for k = 0, batch - 1 do
-                        local idx = i + k
-                        if idx > cols then break end
-                        local x = MINX + (flip and (cols - idx) or idx) * 10
-                        hrp.CFrame = CFrame.new(x, GY, z)
-                    end
-                    i = i + batch
-                    task.wait(delay)
-                    if invFull() then sell() end
-                end
-            end
+local function buildGridRoute()
+    local order = {}
+    local cols = math.floor((MAXX - MINX) / 10)
+    local rows = math.floor((MAXZ - MINZ) / 10)
+    for r = 0, rows do
+        local z = MINZ + r * 10
+        local flip = (r % 2 == 1)
+        for i = 0, cols do
+            local x = MINX + (flip and (cols - i) or i) * 10
+            table.insert(order, { x = x, y = GY, z = z })
         end
     end
+    return order
+end
+
+local function patrol()
+    local path = buildRoute()
+    if #path < 2 then path = buildGridRoute() end
+    if #path == 0 then return end
+
+    local i = 1
+    local hrp = getHrp()
+    if hrp then hrp.CFrame = CFrame.new(path[1].x, GY, path[1].z) end
+
+    F.patrolConn = RUN.Heartbeat:Connect(function(stepDt)
+        if not F.running or F.selling or F.rebirthBusy then return end
+        local root = getHrp()
+        if not root then return end
+
+        root.AssemblyLinearVelocity = Vector3.zero
+        root.AssemblyAngularVelocity = Vector3.zero
+
+        local startPos = Vector3.new(root.Position.X, GY, root.Position.Z)
+        local here = startPos
+        local budget = flightSpeed() * math.min(stepDt, MAX_DT)
+
+        while budget > 0 do
+            local wp = path[i]
+            if not wp then i = 1 wp = path[i] end
+
+            local goal = Vector3.new(wp.x, GY, wp.z)
+            local delta = goal - here
+            local dist = delta.Magnitude
+
+            if dist <= budget then
+                budget = budget - dist
+                here = goal
+                i = i + 1
+            else
+                here = here + delta.Unit * budget
+                budget = 0
+            end
+        end
+
+        local travel = here - startPos
+        if travel.Magnitude > 0.01 then
+            root.CFrame = CFrame.lookAt(here, here + travel.Unit)
+        end
+
+        if invFull() then task.spawn(sell) end
+    end)
 end
 
 on(startBtn.MouseButton1Click, function()
     if F.running then return end
-    if not getHrp() then status.Text = "no character" return end
-    F.running = true; F.rebirthBusy = false
+    local hrp = getHrp()
+    if not hrp then status.Text = "no character" return end
+    local hum = hrp.Parent:FindFirstChildOfClass("Humanoid")
+    if hum then hum.PlatformStand = true end
+    F.running = true; F.rebirthBusy = false; F.selling = false
+    if F.noclip then setNoclip(true) end
     status.Text = "running"
     syncButtons()
-    task.spawn(patrol)
+    patrol()
 end)
+
 on(stopBtn.MouseButton1Click, function()
     F.running = false
+    if F.patrolConn then F.patrolConn:Disconnect() F.patrolConn = nil end
+    local hrp = getHrp()
+    local hum = hrp and hrp.Parent:FindFirstChildOfClass("Humanoid")
+    if hum then hum.PlatformStand = false end
+    setNoclip(false)
     status.Text = "stopped"
     syncButtons()
 end)
@@ -762,6 +861,8 @@ local function unload()
     F.unloaded = true
     F.running = false
     F.rebirthBusy = false
+    if F.patrolConn then pcall(function() F.patrolConn:Disconnect() end) end
+    setNoclip(false)
     for _, c in ipairs(conns) do pcall(function() c:Disconnect() end) end
     table.clear(conns)
     gui:Destroy()
@@ -785,6 +886,11 @@ on(UIS.InputBegan, function(i, gp)
     elseif i.KeyCode == Enum.KeyCode.F2 then
         unload()
     end
+end)
+
+on(plr.CharacterAdded, function()
+    task.wait(0.4)
+    if F.noclip then setNoclip(true) end
 end)
 
 selectTab("Main")
