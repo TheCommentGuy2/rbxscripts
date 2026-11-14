@@ -14,7 +14,7 @@ local F = {
     running = false, speed = 20, rebirth = false,
     rebirthBusy = false, sold = 0, rebirths = 0,
     collapsed = false, keybind = Enum.KeyCode.LeftControl, unloaded = false,
-    selling = false, patrolConn = nil, noclip = false,
+    selling = false, patrolConn = nil, noclip = false, autoTame = false, tameBusy = false, selected = {},
 }
 local function getHrp() local c = plr.Character return c and c:FindFirstChild("HumanoidRootPart") end
 local function invFull() return plr.Wheat.Value >= ((plr:GetAttribute("InventorySize") or 100) - 1) end
@@ -336,11 +336,13 @@ local mainPanel  = makePanel("Main", 1)
 local farmPanel  = makePanel("Farming", 2)
 local speedPanel = makePanel("Speed", 3)
 local setPanel   = makePanel("Settings", 4)
+local petPanel   = makePanel("Pets", 5)
 
 makeTab("Main", 1)
 makeTab("Farming", 2)
 makeTab("Speed", 3)
 makeTab("Settings", 4)
+makeTab("Pets", 5)
 
 local title = Instance.new("TextLabel")
 title.Position = UDim2.fromOffset(T.pad, 16)
@@ -583,6 +585,195 @@ on(ncBtn.MouseButton1Click, function()
     if F.running then setNoclip(F.noclip) end
 end)
 
+local petVars
+local function getVars()
+    if petVars then return petVars end
+    local ok, v = pcall(require, plr.PlayerScripts.LocalManager.Variables)
+    if ok then petVars = v end
+    return petVars
+end
+
+local tameHead = card(petPanel, 58)
+local tameStatus = Instance.new("TextLabel")
+tameStatus.Size = UDim2.new(1, -24, 0, 16)
+tameStatus.Position = UDim2.fromOffset(12, 8)
+tameStatus.BackgroundTransparency = 1
+tameStatus.Text = "gems: ? | owned: ?/?"
+tameStatus.TextColor3 = T.subtext; tameStatus.Font = T.font
+tameStatus.TextSize = 11; tameStatus.TextXAlignment = Enum.TextXAlignment.Left
+tameStatus.Parent = tameHead
+
+local tameBtn = Instance.new("TextButton")
+tameBtn.Size = UDim2.fromOffset(104, 20)
+tameBtn.Position = UDim2.fromOffset(12, 28)
+tameBtn.BackgroundColor3 = T.off; tameBtn.BorderSizePixel = 0
+tameBtn.Text = "Auto Tame: OFF"; tameBtn.TextColor3 = T.text
+tameBtn.Font = T.fontBold; tameBtn.TextSize = 10; tameBtn.AutoButtonColor = false
+tameBtn.Parent = tameHead
+corner(tameBtn, UDim.new(1, 0))
+local tpad = Instance.new("UIPadding")
+tpad.PaddingLeft = UDim.new(0, 10); tpad.PaddingRight = UDim.new(0, 10)
+tpad.Parent = tameBtn
+tameBtn.AutomaticSize = Enum.AutomaticSize.X
+
+on(tameBtn.MouseButton1Click, function()
+    F.autoTame = not F.autoTame
+    tameBtn.Text = "Auto Tame: " .. (F.autoTame and "ON" or "OFF")
+    styleToggle(tameBtn, F.autoTame)
+end)
+
+local selRow = Instance.new("Frame")
+selRow.Size = UDim2.new(1, 0, 0, 24)
+selRow.BackgroundTransparency = 1; selRow.Parent = petPanel
+
+local allBtn = mkBtn("All", 0, 24, T.raised)
+allBtn.Size = UDim2.new(0.5, -4, 0, 24); allBtn.Parent = selRow
+local noneBtn = mkBtn("None", 0, 24, T.raised)
+noneBtn.Size = UDim2.new(0.5, -4, 0, 24)
+noneBtn.Position = UDim2.new(0.5, 4, 0, 0); noneBtn.Parent = selRow
+
+local petList = Instance.new("Frame")
+petList.Size = UDim2.new(1, 0, 0, 0)
+petList.AutomaticSize = Enum.AutomaticSize.Y
+petList.BackgroundTransparency = 1
+petList.BorderSizePixel = 0
+petList.Parent = petPanel
+local pll = Instance.new("UIListLayout")
+pll.Padding = UDim.new(0, 3)
+pll.SortOrder = Enum.SortOrder.LayoutOrder
+pll.Parent = petList
+
+local rarityOrder = { "Common", "Rare", "Epic", "Legendary", "Mythical" }
+local rarityRank = {}
+for i, r in ipairs(rarityOrder) do rarityRank[r] = i end
+local rarityCol = {
+    Common = Color3.fromRGB(105, 205, 255),
+    Rare = Color3.fromRGB(255, 205, 105),
+    Epic = Color3.fromRGB(255, 190, 255),
+    Legendary = Color3.fromRGB(255, 105, 105),
+    Mythical = Color3.fromRGB(180, 105, 255),
+}
+
+local checks = {}
+local function buildPetList()
+    local v = getVars()
+    if not v then return end
+    local names = {}
+    for name in pairs(v.petRarities or {}) do table.insert(names, name) end
+    table.sort(names, function(a, b)
+        local ra = rarityRank[v.petRarities[a]] or 9
+        local rb = rarityRank[v.petRarities[b]] or 9
+        if ra ~= rb then return ra < rb end
+        local ca = v.tamingCosts[v.petRarities[a]] or 0
+        local cb = v.tamingCosts[v.petRarities[b]] or 0
+        if ca ~= cb then return ca < cb end
+        return a < b
+    end)
+    for idx, name in ipairs(names) do
+        local rar = v.petRarities[name]
+        local cost = v.tamingCosts[rar] or 0
+        local row = Instance.new("Frame")
+        row.Size = UDim2.new(1, -4, 0, 22)
+        row.BackgroundTransparency = 1
+        row.LayoutOrder = idx
+        row.Parent = petList
+
+        local box = Instance.new("TextButton")
+        box.Size = UDim2.fromOffset(16, 16)
+        box.Position = UDim2.new(0, 0, 0.5, 0)
+        box.AnchorPoint = Vector2.new(0, 0.5)
+        box.BackgroundColor3 = T.off
+        box.BorderSizePixel = 0
+        box.Text = ""; box.AutoButtonColor = false
+        box.Parent = row
+        corner(box, UDim.new(0, 4))
+        stroke(box, T.border, 1, 0.3)
+
+        local nm = lbl(row, name, 11, rarityCol[rar] or T.text)
+        nm.Position = UDim2.fromOffset(24, 0)
+        nm.Size = UDim2.new(1, -110, 1, 0)
+        nm.TextYAlignment = Enum.TextYAlignment.Center
+
+        local cl = lbl(row, tostring(cost), 11, T.muted)
+        cl.Position = UDim2.new(1, -70, 0, 0)
+        cl.Size = UDim2.fromOffset(66, 22)
+        cl.TextXAlignment = Enum.TextXAlignment.Right
+        cl.TextYAlignment = Enum.TextYAlignment.Center
+
+        checks[name] = box
+        on(box.MouseButton1Click, function()
+            F.selected[name] = not F.selected[name]
+            box.BackgroundColor3 = F.selected[name] and T.accent or T.off
+        end)
+    end
+end
+
+on(allBtn.MouseButton1Click, function()
+    for name, box in pairs(checks) do
+        F.selected[name] = true
+        box.BackgroundColor3 = T.accent
+    end
+end)
+on(noneBtn.MouseButton1Click, function()
+    for name, box in pairs(checks) do
+        F.selected[name] = nil
+        box.BackgroundColor3 = T.off
+    end
+end)
+
+buildPetList()
+
+task.spawn(function()
+    while true do
+        task.wait(0.4)
+        if F.unloaded then break end
+        local v = getVars()
+        if v then
+            local owned = (v.data and v.data.Pets and #v.data.Pets) or 0
+            tameStatus.Text = "gems: " .. tostring(v.tamingCrystalsValue and v.tamingCrystalsValue.Value) .. " | owned: " .. owned .. "/" .. tostring(v.maxPets)
+        end
+        if F.running and F.autoTame and not F.tameBusy and not F.selling and not F.rebirthBusy and v then
+            local owned = (v.data and v.data.Pets and #v.data.Pets) or 0
+            if owned < (v.maxPets or 8) then
+                local hrp = getHrp()
+                local best, bd = nil, math.huge
+                if hrp then
+                    for _, d in ipairs(workspace:GetChildren()) do
+                        if d:IsA("Model") and d:GetAttribute("WildPet") and F.selected[d.Name] then
+                            local c = v.tamingCosts[v.petRarities[d.Name]]
+                            if c and v.tamingCrystalsValue.Value >= c then
+                                local pp = d.PrimaryPart
+                                if pp then
+                                    local dist = (pp.Position - hrp.Position).Magnitude
+                                    if dist < bd then bd, best = dist, d end
+                                end
+                            end
+                        end
+                    end
+                end
+                if best then
+                    F.tameBusy = true
+                    local back = hrp.CFrame
+                    local pp = best.PrimaryPart
+                    hrp.CFrame = CFrame.new(pp.Position + Vector3.new(0, 4, 0))
+                    task.wait(0.18)
+                    local okT, data, err = pcall(function() return RF.Tame:InvokeServer(best, pp) end)
+                    if okT and data then
+                        v.data = data
+                        status.Text = "tamed " .. best.Name
+                    elseif err then
+                        status.Text = "tame: " .. tostring(err)
+                    end
+                    task.wait(0.15)
+                    local h2 = getHrp()
+                    if h2 and F.running then h2.CFrame = back end
+                    F.tameBusy = false
+                end
+            end
+        end
+    end
+end)
+
 local FLIGHT_MIN, FLIGHT_MAX = 20, 1000
 local MAX_DT = 0.1 
 
@@ -783,7 +974,7 @@ local function patrol()
     if hrp then hrp.CFrame = CFrame.new(path[1].x, GY, path[1].z) end
 
     F.patrolConn = RUN.Heartbeat:Connect(function(stepDt)
-        if not F.running or F.selling or F.rebirthBusy then return end
+        if not F.running or F.selling or F.rebirthBusy or F.tameBusy then return end
         local root = getHrp()
         if not root then return end
 
