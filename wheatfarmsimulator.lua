@@ -14,7 +14,7 @@ local F = {
     running = false, speed = 20, rebirth = false,
     rebirthBusy = false, sold = 0, rebirths = 0,
     collapsed = false, keybind = Enum.KeyCode.LeftControl, unloaded = false,
-    selling = false, patrolConn = nil, noclip = false, autoTame = false, tameBusy = false, selected = {}, gemOnly = false, gemBusy = false,
+    selling = false, patrolConn = nil, noclip = false, autoTame = false, tameBusy = false, selected = {}, gemOnly = false, gemBusy = false, sellMode = "auto", sellInterval = 30, sellTimer = 0,
 }
 local function getHrp() local c = plr.Character return c and c:FindFirstChild("HumanoidRootPart") end
 local function invFull() return plr.Wheat.Value >= ((plr:GetAttribute("InventorySize") or 100) - 1) end
@@ -610,6 +610,87 @@ on(gBtn.MouseButton1Click, function()
     styleToggle(gBtn, F.gemOnly)
 end)
 
+local smRow = toggleRow(farmPanel, "Sell Mode", "Auto sells when full. Interval sells on a timer")
+local smSeg = Instance.new("Frame")
+smSeg.Size = UDim2.fromOffset(112, 24)
+smSeg.AnchorPoint = Vector2.new(1, 0.5)
+smSeg.Position = UDim2.new(1, 0, 0.5, 0)
+smSeg.BackgroundColor3 = T.off
+smSeg.BorderSizePixel = 0
+smSeg.Parent = smRow
+corner(smSeg, UDim.new(1, 0))
+
+local function mkSeg(txt, xside)
+    local b = Instance.new("TextButton")
+    b.Size = UDim2.new(0.5, 0, 1, 0)
+    b.Position = UDim2.new(xside, 0, 0, 0)
+    b.BackgroundColor3 = T.off
+    b.BackgroundTransparency = 1
+    b.BorderSizePixel = 0
+    b.Text = txt
+    b.TextColor3 = T.subtext
+    b.Font = T.fontBold
+    b.TextSize = 10
+    b.AutoButtonColor = false
+    b.Parent = smSeg
+    corner(b, UDim.new(1, 0))
+    return b
+end
+
+local smAuto = mkSeg("Auto", 0)
+local smInt = mkSeg("Interval", 0.5)
+
+local ivRow = toggleRow(farmPanel, "Interval", "Seconds between sells. Interval mode only")
+local ivBox = Instance.new("TextBox")
+ivBox.Size = UDim2.fromOffset(64, 24)
+ivBox.AnchorPoint = Vector2.new(1, 0.5)
+ivBox.Position = UDim2.new(1, 0, 0.5, 0)
+ivBox.BackgroundColor3 = T.raised
+ivBox.BorderSizePixel = 0
+ivBox.Text = tostring(F.sellInterval)
+ivBox.TextColor3 = T.text
+ivBox.Font = T.fontBold
+ivBox.TextSize = 11
+ivBox.ClearTextOnFocus = false
+ivBox.Parent = ivRow
+corner(ivBox, T.rControl)
+stroke(ivBox, T.border, 1, 0.3)
+
+on(ivBox:GetPropertyChangedSignal("Text"), function()
+    local clean = string.gsub(ivBox.Text, "%D", "")
+    if clean ~= ivBox.Text then ivBox.Text = clean end
+end)
+
+on(ivBox.FocusLost, function()
+    local n = tonumber(ivBox.Text)
+    if not n then n = 30 end
+    F.sellInterval = math.clamp(math.floor(n + 0.5), 1, 3600)
+    ivBox.Text = tostring(F.sellInterval)
+end)
+
+local function setSellMode(mode)
+    F.sellMode = mode
+    F.sellTimer = 0
+    local auto = (mode == "auto")
+    tw(smAuto, 0.15, {
+        BackgroundTransparency = auto and 0 or 1,
+        BackgroundColor3 = auto and T.accent or T.off,
+        TextColor3 = auto and T.onText or T.subtext,
+    })
+    tw(smInt, 0.15, {
+        BackgroundTransparency = auto and 1 or 0,
+        BackgroundColor3 = auto and T.off or T.accent,
+        TextColor3 = auto and T.subtext or T.onText,
+    })
+    ivBox.TextColor3 = auto and T.muted or T.text
+    ivBox.TextEditable = not auto
+    ivBox.BackgroundTransparency = auto and 0.5 or 0
+end
+
+on(smAuto.MouseButton1Click, function() setSellMode("auto") end)
+on(smInt.MouseButton1Click, function() setSellMode("interval") end)
+setSellMode("auto")
+
 task.spawn(function()
     while true do
         task.wait(0.3)
@@ -781,6 +862,108 @@ on(noneBtn.MouseButton1Click, function()
 end)
 
 buildPetList()
+
+local espOn = false
+local espObjs = {}
+
+local function clearEsp()
+    for model, obj in pairs(espObjs) do
+        if obj.hl then obj.hl:Destroy() end
+        if obj.bg then obj.bg:Destroy() end
+    end
+    table.clear(espObjs)
+end
+
+local function applyEsp(model)
+    if espObjs[model] then return end
+    local v = getVars()
+    local rar = v and v.petRarities and v.petRarities[model.Name]
+    local col = rarityCol[rar] or Color3.fromRGB(255, 255, 255)
+
+    local hl = Instance.new("Highlight")
+    hl.Name = "WF_ESP"
+    hl.FillColor = col
+    hl.OutlineColor = col
+    hl.FillTransparency = 0.72
+    hl.OutlineTransparency = 0
+    hl.DepthMode = Enum.HighlightDepthMode.AlwaysOnTop
+    hl.Adornee = model
+    hl.Parent = model
+
+    local bg = Instance.new("BillboardGui")
+    bg.Name = "WF_ESP_NAME"
+    bg.Size = UDim2.fromOffset(180, 28)
+    bg.StudsOffsetWorldSpace = Vector3.new(0, 3, 0)
+    bg.AlwaysOnTop = true
+    bg.MaxDistance = 350
+    bg.Adornee = model
+    bg.Parent = model
+
+    local txt = Instance.new("TextLabel")
+    txt.Size = UDim2.fromScale(1, 1)
+    txt.BackgroundTransparency = 1
+    txt.Text = model.Name .. (rar and ("  [" .. rar .. "]") or "")
+    txt.TextColor3 = col
+    txt.Font = T.fontBold
+    txt.TextSize = 13
+    txt.TextStrokeTransparency = 0.45
+    txt.Parent = bg
+
+    espObjs[model] = { hl = hl, bg = bg, txt = txt, rar = rar }
+end
+
+local espBtn = Instance.new("TextButton")
+espBtn.Size = UDim2.new(0, 0, 0, 20)
+espBtn.AutomaticSize = Enum.AutomaticSize.X
+espBtn.AnchorPoint = Vector2.new(1, 0.5)
+espBtn.Position = UDim2.new(1, -12, 0, 38)
+espBtn.BackgroundColor3 = T.off
+espBtn.BorderSizePixel = 0
+espBtn.Text = "Pet ESP: OFF"
+espBtn.TextColor3 = T.text
+espBtn.Font = T.fontBold
+espBtn.TextSize = 10
+espBtn.AutoButtonColor = false
+espBtn.Parent = tameHead
+corner(espBtn, UDim.new(1, 0))
+local epad = Instance.new("UIPadding")
+epad.PaddingLeft = UDim.new(0, 10)
+epad.PaddingRight = UDim.new(0, 10)
+epad.Parent = espBtn
+
+on(espBtn.MouseButton1Click, function()
+    espOn = not espOn
+    espBtn.Text = "Pet ESP: " .. (espOn and "ON" or "OFF")
+    styleToggle(espBtn, espOn)
+    if not espOn then clearEsp() end
+end)
+
+task.spawn(function()
+    while true do
+        task.wait(0.5)
+        if F.unloaded then break end
+        if not espOn then continue end
+        local v = getVars()
+        for _, d in ipairs(workspace:GetChildren()) do
+            if d:IsA("Model") and d:GetAttribute("WildPet") and d.PrimaryPart then
+                applyEsp(d)
+            end
+        end
+        for model, obj in pairs(espObjs) do
+            if not model.Parent then
+                obj.hl:Destroy() obj.bg:Destroy()
+                espObjs[model] = nil
+            elseif obj.rar == nil and v and v.petRarities[model.Name] then
+                local r = v.petRarities[model.Name]
+                local col = rarityCol[r] or Color3.fromRGB(255, 255, 255)
+                obj.rar = r
+                obj.hl.FillColor = col obj.hl.OutlineColor = col
+                obj.txt.Text = model.Name .. "  [" .. r .. "]"
+                obj.txt.TextColor3 = col
+            end
+        end
+    end
+end)
 
 task.spawn(function()
     while true do
@@ -957,9 +1140,8 @@ local function getCost()
 end
 
 local function sell()
-    if F.selling then return end
-    local hrp = getHrp(); if not hrp then return end
-    F.selling = true
+    local hrp = getHrp()
+    if not hrp then F.selling = false return end
 
     local returnPos = hrp.Position
     local had = plr.Wheat.Value
@@ -1067,7 +1249,19 @@ local function patrol()
             root.CFrame = CFrame.lookAt(here, here + travel.Unit)
         end
 
-        if invFull() then task.spawn(sell) end
+        if F.sellMode == "auto" then
+            if invFull() then
+                F.selling = true
+                task.spawn(sell)
+            end
+        else
+            F.sellTimer = (F.sellTimer or 0) + math.min(stepDt, MAX_DT)
+            if invFull() or (F.sellTimer >= F.sellInterval and plr.Wheat.Value > 0) then
+                F.sellTimer = 0
+                F.selling = true
+                task.spawn(sell)
+            end
+        end
     end)
 end
 
@@ -1077,7 +1271,8 @@ on(startBtn.MouseButton1Click, function()
     if not hrp then status.Text = "no character" return end
     local hum = hrp.Parent:FindFirstChildOfClass("Humanoid")
     if hum then hum.PlatformStand = true end
-    F.running = true; F.rebirthBusy = false; F.selling = false
+    F.running = true; F.rebirthBusy = false; F.selling = false; F.sellTimer = 0
+
     if F.noclip then setNoclip(true) end
     status.Text = "running"
     syncButtons()
@@ -1113,6 +1308,7 @@ local function unload()
     F.rebirthBusy = false
     if F.patrolConn then pcall(function() F.patrolConn:Disconnect() end) end
     setNoclip(false)
+    clearEsp()
     for _, c in ipairs(conns) do pcall(function() c:Disconnect() end) end
     table.clear(conns)
     gui:Destroy()
